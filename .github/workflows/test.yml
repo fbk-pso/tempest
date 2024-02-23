@@ -30,7 +30,7 @@ jobs:
         run: python3 -m pip install unified-planning/
 
       - name: Create up.ini to install tempest
-        run: echo -e "[engine tempest]\nmodule_name: tempest.engine\nclass_name: TempestEngine" > .up.ini
+        run: "echo -e '[engine tempest]\nmodule_name: tempest.engine\nclass_name: TempestEngine' > .up.ini"
 
       - name: Install requirements
         run: python3 -m pip install -r requirements.txt
