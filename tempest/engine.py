@@ -1,3 +1,4 @@
+from time import time
 import pysmt
 import warnings
 import unified_planning as up
@@ -99,8 +100,6 @@ class TempestEngine(up.engines.Engine, up.engines.mixins.OneshotPlannerMixin):
         output_stream: Optional[IO[str]] = None,
     ) -> "up.engines.results.PlanGenerationResult":
         assert isinstance(problem, up.model.Problem)
-        if timeout is not None:
-            warnings.warn("TemPEST does not support timeout.", UserWarning)
         if output_stream is not None:
             warnings.warn("TemPEST does not support output stream.", UserWarning)
         if heuristic is not None:
@@ -109,6 +108,9 @@ class TempestEngine(up.engines.Engine, up.engines.mixins.OneshotPlannerMixin):
         pysmt_env = pysmt.shortcuts.get_env()
 
         enc = ProblemEncoder(problem, pysmt_env=pysmt_env)
+
+        start_time = time()
+        is_in_timeout: bool = False
 
         if self.incremental:
             with Solver(logic="QF_LRA") as smt:
@@ -134,6 +136,9 @@ class TempestEngine(up.engines.Engine, up.engines.mixins.OneshotPlannerMixin):
                         smt.pop()
                         print(f"No solution with bound {h}")
                         h += 1
+                    if timeout is not None and time() - start_time > timeout:
+                        is_in_timeout = True
+                        break
         else:
             h = 2
             while self.horizon is None or h <= self.horizon:
@@ -154,7 +159,12 @@ class TempestEngine(up.engines.Engine, up.engines.mixins.OneshotPlannerMixin):
                     else:
                         print(f"No solution with bound {h}")
                         h += 1
+                if timeout is not None and time() - start_time > timeout:
+                    is_in_timeout = True
+                    break
+
+        status = PlanGenerationResultStatus.TIMEOUT if is_in_timeout else PlanGenerationResultStatus.UNSOLVABLE_INCOMPLETELY
 
         return PlanGenerationResult(
-            PlanGenerationResultStatus.UNSOLVABLE_INCOMPLETELY, None, self.name
+            status, None, self.name
         )
