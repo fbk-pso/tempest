@@ -10,6 +10,7 @@ setup(name='tempest',
       url='tamer.fbk.eu',
       packages=['tempest'],
       python_requires='>=3.7',
+      install_requires=["pysmt"],
       license='Free For Educational Use',
       classifiers=[
           'License :: Free For Educational Use'

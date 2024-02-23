@@ -19,6 +19,12 @@ jobs:
         with:
           python-version: "3.10"
 
+      - name: Install tempest
+        run: python3 -m pip install .
+
+      - name: Install mathsat using pysmt
+        run: pysmt-install --msat --confirm-agreement
+
       - name: Checkout unified-planning
         uses: actions/checkout@v2
         with:
@@ -29,14 +35,9 @@ jobs:
       - name: Install unified-planning
         run: python3 -m pip install unified-planning/
 
-      - name: Create up.ini to install tempest
-        run: "echo -e '[engine tempest]\nmodule_name: tempest.engine\nclass_name: TempestEngine' > .up.ini"
-
-      - name: Install requirements
-        run: python3 -m pip install -r requirements.txt
-
-      - name: Install mathsat using pysmt
-        run: pysmt-install --msat --confirm-agreement
+      - name: Create up.ini to install tempest  in the Unified Planning
+        run: |
+          echo -e "[engine tempest]\nmodule_name: tempest.engine\nclass_name: TempestEngine" > .up.ini
 
       - name: Run the report
         run: python3 unified-planning/up_test_cases/report.py tempest -m oneshot
