@@ -40,4 +40,4 @@ jobs:
           echo -e "[engine tempest]\nmodule_name: tempest.engine\nclass_name: TempestEngine" > .up.ini
 
       - name: Run the report
-        run: python3 unified-planning/up_test_cases/report.py tempest -m oneshot
+        run: python3 unified-planning/up_test_cases/report.py tempest -m oneshot -t 0.5

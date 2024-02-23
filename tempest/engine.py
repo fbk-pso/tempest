@@ -133,7 +133,7 @@ class TempestEngine(up.engines.Engine, up.engines.mixins.OneshotPlannerMixin):
                     else:
                         smt.pop()
                         if output_stream is not None:
-                            output_stream.write(f"No solution with bound {h}")
+                            output_stream.write(f"No solution with bound {h}\n")
                         h += 1
                     if timeout is not None and time() - start_time > timeout:
                         is_in_timeout = True
@@ -157,7 +157,7 @@ class TempestEngine(up.engines.Engine, up.engines.mixins.OneshotPlannerMixin):
                             return res
                     else:
                         if output_stream is not None:
-                            output_stream.write(f"No solution with bound {h}")
+                            output_stream.write(f"No solution with bound {h}\n")
                         h += 1
                 if timeout is not None and time() - start_time > timeout:
                     is_in_timeout = True
