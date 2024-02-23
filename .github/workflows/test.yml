@@ -1,0 +1,42 @@
+name: CI-on-push
+
+on:
+  push:
+
+env:
+  unified_planning_commit: "97674573a01b85273de847ba9976ab245ce0edb2"
+
+jobs:
+  unified-planning-report:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v1
+        with:
+          python-version: ${{inputs.python-version}}
+
+      - name: Checkout unified-planning
+        uses: actions/checkout@v2
+        with:
+          repository: aiplan4eu/unified-planning
+          path: unified-planning
+          ref: ${{env.unified_planning_commit}}
+
+      - name: Install unified-planning
+        run: python3 -m pip install unified-planning/
+
+      - name: Create up.ini to install tempest
+        run: echo -e "[engine tempest]\nmodule_name: tempest.engine\nclass_name: TempestEngine" > .up.ini
+
+      - name: Install requirements
+        run: python3 -m pip install -r requirements.txt
+
+      - name: Install mathsat using pysmt
+        run: pysmt-install --msat --confirm-agreement
+
+      - name: Run the report
+        run: python3 -m pip install unified-planning/up_test_cases/report.py tempest -m oneshot
