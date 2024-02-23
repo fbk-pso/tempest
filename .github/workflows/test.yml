@@ -22,8 +22,8 @@ jobs:
       - name: Install tempest
         run: python3 -m pip install .
 
-      - name: Install mathsat using pysmt
-        run: pysmt-install --msat --confirm-agreement
+      - name: Install z3 using pysmt
+        run: pysmt-install --z3 --confirm-agreement
 
       - name: Checkout unified-planning
         uses: actions/checkout@v2
