@@ -1,0 +1,43 @@
+name: CI-on-push
+
+on:
+  push
+
+env:
+  unified_planning_commit: "97674573a01b85273de847ba9976ab245ce0edb2"
+
+jobs:
+  unified-planning-report:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v1
+        with:
+          python-version: "3.10"
+
+      - name: Install tempest
+        run: python3 -m pip install .
+
+      - name: Install z3 using pysmt
+        run: pysmt-install --z3 --confirm-agreement
+
+      - name: Checkout unified-planning
+        uses: actions/checkout@v2
+        with:
+          repository: aiplan4eu/unified-planning
+          path: unified-planning
+          ref: ${{env.unified_planning_commit}}
+
+      - name: Install unified-planning
+        run: python3 -m pip install unified-planning/
+
+      - name: Create up.ini to install tempest  in the Unified Planning
+        run: |
+          echo -e "[engine tempest]\nmodule_name: tempest.engine\nclass_name: TempestEngine" > .up.ini
+
+      - name: Run the report
+        run: python3 unified-planning/up_test_cases/report.py tempest -m oneshot -t 0.5

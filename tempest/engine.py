@@ -1,3 +1,4 @@
+from time import time
 import pysmt
 import warnings
 import unified_planning as up
@@ -99,19 +100,18 @@ class TempestEngine(up.engines.Engine, up.engines.mixins.OneshotPlannerMixin):
         output_stream: Optional[IO[str]] = None,
     ) -> "up.engines.results.PlanGenerationResult":
         assert isinstance(problem, up.model.Problem)
-        if timeout is not None:
-            warnings.warn("TemPEST does not support timeout.", UserWarning)
-        if output_stream is not None:
-            warnings.warn("TemPEST does not support output stream.", UserWarning)
         if heuristic is not None:
             warnings.warn("TemPEST does not support custom heuristics.", UserWarning)
 
-        pysmt_env = pysmt.shortcuts.get_env()
+        pysmt_env = pysmt.environment.Environment()
 
         enc = ProblemEncoder(problem, pysmt_env=pysmt_env)
 
+        start_time = time()
+        is_in_timeout: bool = False
+
         if self.incremental:
-            with Solver(logic="QF_LRA") as smt:
+            with Solver(logic="QF_NRA") as smt:
                 smt.add_assertion(enc.incremental_step_zero())
                 h = 2
                 while self.horizon is None or h <= self.horizon:
@@ -132,13 +132,17 @@ class TempestEngine(up.engines.Engine, up.engines.mixins.OneshotPlannerMixin):
                             return res
                     else:
                         smt.pop()
-                        print(f"No solution with bound {h}")
+                        if output_stream is not None:
+                            output_stream.write(f"No solution with bound {h}\n")
                         h += 1
+                    if timeout is not None and time() - start_time > timeout:
+                        is_in_timeout = True
+                        break
         else:
             h = 2
             while self.horizon is None or h <= self.horizon:
                 formula = enc.monolithic_bounded_planning(h)
-                with Solver(logic="QF_LRA") as smt:
+                with Solver(logic="QF_NRA") as smt:
                     smt.add_assertion(formula)
                     if smt.solve():
                         plan = enc.extract_plan(smt.get_model(), h)
@@ -152,9 +156,15 @@ class TempestEngine(up.engines.Engine, up.engines.mixins.OneshotPlannerMixin):
                         else:
                             return res
                     else:
-                        print(f"No solution with bound {h}")
+                        if output_stream is not None:
+                            output_stream.write(f"No solution with bound {h}\n")
                         h += 1
+                if timeout is not None and time() - start_time > timeout:
+                    is_in_timeout = True
+                    break
+
+        status = PlanGenerationResultStatus.TIMEOUT if is_in_timeout else PlanGenerationResultStatus.UNSOLVABLE_INCOMPLETELY
 
         return PlanGenerationResult(
-            PlanGenerationResultStatus.UNSOLVABLE_INCOMPLETELY, None, self.name
+            status, None, self.name
         )

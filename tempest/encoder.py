@@ -253,13 +253,13 @@ class ProblemEncoder:
             cond_1 = self.mgr.And(self.mgr.LE(self.t(i - 1), smt_tp_1), self.mgr.GT(self.t(i), smt_tp_1))
             formula_1 = self.mgr.Implies(cond_1, self.to_smt(c, i - 1, w, scope=action))
             cond_2 = self.mgr.And(self.mgr.LT(self.t(i), smt_tp_2), self.mgr.GT(self.t(i), smt_tp_1))
-            formula_2 = self.mgr.Implies(cond_2, self.to_smt(c, i - 1, w, scope=action))
+            formula_2 = self.mgr.Implies(cond_2, self.to_smt(c, i, w, scope=action))
             formula = self.mgr.And(formula_1, formula_2)
         else:  # closed and right open are the same
             cond_1 = self.mgr.And(self.mgr.LT(self.t(i - 1), smt_tp_1), self.mgr.GE(self.t(i), smt_tp_1))
             formula_1 = self.mgr.Implies(cond_1, self.to_smt(c, i - 1, w, scope=action))
             cond_2 = self.mgr.And(self.mgr.LT(self.t(i), smt_tp_2), self.mgr.GE(self.t(i), smt_tp_1))
-            formula_2 = self.mgr.Implies(cond_2, self.to_smt(c, i - 1, w, scope=action))
+            formula_2 = self.mgr.Implies(cond_2, self.to_smt(c, i, w, scope=action))
             formula = self.mgr.And(formula_1, formula_2)
         return formula
 

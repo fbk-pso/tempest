@@ -1,3 +1,4 @@
+import sys
 from unified_planning.shortcuts import *
 from unified_planning.test.examples import get_example_problems
 
@@ -10,7 +11,7 @@ problem = pbs["matchcellar"].problem
 # print(problem)
 
 with OneshotPlanner(name="tempest", params={'incremental': False}) as p:
-    res = p.solve(problem)
+    res = p.solve(problem, output_stream=sys.stdout)
     print(res)
 
     if res.plan:
