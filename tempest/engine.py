@@ -34,7 +34,8 @@ class TempestEngine(up.engines.Engine, up.engines.mixins.OneshotPlannerMixin):
         up.engines.Engine.__init__(self)
         up.engines.mixins.OneshotPlannerMixin.__init__(self)
         self.horizon = horizon
-        self.incremental = incremental
+        # self.incremental = incremental # TODO decomment
+        self.incremental = False
 
     @property
     def name(self) -> str:
