@@ -1,10 +1,10 @@
-from typing import Dict, FrozenSet, Iterable, List, Optional, Set, Tuple, Union
+from typing import Dict, List, Optional, Set, Tuple
 import pysmt
 import unified_planning as up
 
 from functools import lru_cache
 from unified_planning.plans import SequentialPlan, TimeTriggeredPlan
-from unified_planning.model import DurativeAction, Effect, FNode, Fluent, Action, Timing, InstantaneousAction, StartTiming, GlobalStartTiming, GlobalEndTiming, EndTiming
+from unified_planning.model import DurativeAction, FNode, Fluent, Action, Timing, InstantaneousAction, StartTiming, GlobalEndTiming
 from unified_planning.model.fluent import get_all_fluent_exp
 from tempest.converter import SMTConverter
 
@@ -543,7 +543,6 @@ class ProblemEncoder:
                                         res.append(self.mgr.Not(self.mgr.And(a_i, b_j, same_timing)))
 
         return self.mgr.And(res)
-
 
     def _create_fluents_modification_map(self) -> Dict[Fluent, Dict[FNode, Set[Tuple[Optional[Action], Timing, bool, Optional[int]]]]]:
         # Create a map from a fluent to the event time that modifies that fluent
