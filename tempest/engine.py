@@ -156,6 +156,7 @@ class TempestEngine(_BaseEngine):
                         is_in_timeout = True
                         break
 
+
         status = PlanGenerationResultStatus.TIMEOUT if is_in_timeout else PlanGenerationResultStatus.UNSOLVABLE_INCOMPLETELY
 
         return PlanGenerationResult(
@@ -166,3 +167,109 @@ class TempestEngine(_BaseEngine):
 class TempestNonIncremental(TempestEngine):
     def __init__(self, horizon=None):
         super().__init__(False, horizon)
+
+class TempestOptimalEngine(_BaseEngine):
+    """Implementation of the TemPEST Optimal Engine."""
+
+    @property
+    def name(self) -> str:
+        return "TemPEST Optimal"
+
+    @staticmethod
+    def supported_kind() -> ProblemKind:
+        return _BaseEngine._base_kind()
+
+    @staticmethod
+    def supports(problem_kind: "up.model.ProblemKind") -> bool:
+        return problem_kind <= TempestEngine.supported_kind()
+
+    @staticmethod
+    def satisfies(optimality_guarantee: "up.engines.OptimalityGuarantee") -> bool:
+        return True
+
+    @staticmethod
+    def get_credits(**kwargs) -> Optional["up.engines.Credits"]:
+        return credits
+
+    def _solve(
+        self,
+        problem: "up.model.AbstractProblem",
+        heuristic: Optional[Callable[["up.model.state.State"], Optional[float]]] = None,
+        timeout: Optional[float] = None,
+        output_stream: Optional[IO[str]] = None,
+    ) -> "up.engines.results.PlanGenerationResult":
+        assert isinstance(problem, up.model.Problem)
+        if heuristic is not None:
+            warnings.warn("TemPEST does not support custom heuristics.", UserWarning)
+
+        from pysmt.shortcuts import Optimizer
+
+        pysmt_env = pysmt.environment.Environment()
+
+        modify_horizon = lambda x: x
+        if self.incremental:
+            raise NotImplementedError()
+            encoder = IncrementalEncoder(problem, pysmt_env=pysmt_env)
+            modify_horizon = lambda x: x-1
+        else:
+            encoder = MonolithicEncoder(problem, pysmt_env=pysmt_env, optimal=True)
+
+        # encoder = MonolithicEncoder(problem, pysmt_env=pysmt_env, optimal=False) # TODO remove, only for debugging
+        start_time = time()
+        is_in_timeout: bool = False
+
+        with Optimizer(logic="QF_NRA") as omt:
+            step_zero = encoder.encode_step_zero()
+            if step_zero is not None:
+                omt.add_assertion(step_zero)
+            h = 2
+            self.horizon = 10 # TODO remove
+            while self.horizon is None or h <= self.horizon:
+                formula, assumptions = encoder.encode_step(modify_horizon(h))
+                if formula is not None:
+                    omt.add_assertion(formula)
+                omt.push()
+                for a in assumptions:
+                    omt.add_assertion(a)
+                minimization_goal, extra_constraints = encoder.objective_to_minimize(h)
+                if extra_constraints is not None:
+                    for ec in extra_constraints:
+                        omt.add_assertion(ec)
+                optimization_result = omt.optimize(minimization_goal)
+                if optimization_result is not None:
+                    model, makespan = optimization_result
+                    uses_abstract_step = model.get_value(encoder._uses_abstact_step(h)).is_true()
+                    if uses_abstract_step:
+                        elapsed_time = time() - start_time
+                        if output_stream is not None:
+                            output_stream.write(f"Makespan with bound {h}: {makespan}. Elapsed_time: {elapsed_time:.3f} seconds\n")
+                        h += 1
+                        if timeout is not None and elapsed_time > timeout:
+                            is_in_timeout = True
+                            break
+                    else:
+                        plan = encoder.extract_plan(model, h)
+                        assert plan is not None
+                        res = PlanGenerationResult(
+                            PlanGenerationResultStatus.SOLVED_OPTIMALLY,
+                            plan,
+                            self.name,
+                        )
+                        if isinstance(plan, TimeTriggeredPlan):
+                            return correct_plan_generation_result(res, problem, None)
+                        else:
+                            return res
+
+                else:
+                    h = h+1
+                    # elapsed_time = time() - start_time
+                    # if output_stream is not None:
+                    #     output_stream.write(f"Found unsolvable at step {h}. Elapsed_time: {elapsed_time:.3f} seconds\n")
+                    # break
+                omt.pop()
+
+        status = PlanGenerationResultStatus.TIMEOUT if is_in_timeout else PlanGenerationResultStatus.UNSOLVABLE_INCOMPLETELY
+
+        return PlanGenerationResult(
+            status, None, self.name
+        )
