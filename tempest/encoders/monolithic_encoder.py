@@ -61,9 +61,8 @@ class MonolithicEncoder(BaseEncoder):
                 assert not timing.is_global()
                 return self.encode_tp(action, timing, step)
             else:
-                # TODO decomment assert action is None and timing.is_global() -> It is commented due to a problem in the UnifiedPlanning test-cases, where some tils have StartTiming instead of GlobalStartTiming
-
-                return self.encode_problem_tp(timing, h) # TODO Understand if h goes here and  understand the difference between putting H and not
+                # assert action is None and timing.is_global() -> It is commented due to a problem in the UnifiedPlanning test-cases, where some tils have StartTiming instead of GlobalStartTiming
+                return self.encode_problem_tp(timing, h)
 
         for (fluent_exp_a, action_a, timing_a, is_write_a, til_id_a), (fluent_exp_b, action_b, timing_b, is_write_b, til_id_b) in self._mutex_couples:
             for j in range(1, h):
