@@ -1,3 +1,4 @@
+from itertools import chain
 from typing import Any, Optional
 from tempest.encoders.base_encoder import BaseEncoder
 
@@ -7,27 +8,6 @@ from unified_planning.model import DurativeAction, InstantaneousAction
 class IncrementalEncoder(BaseEncoder):
     def __init__(self, problem, pysmt_env=None):
         super().__init__(problem, pysmt_env)
-        self.mutexes = {}
-        for a in self.problem.actions:
-            if not isinstance(a, InstantaneousAction):
-                continue
-            mutex_a = []
-            self.mutexes[a] = mutex_a
-            for b in self.problem.actions:
-                if not isinstance(b, InstantaneousAction):
-                    continue
-                if a != b and self.is_mutex(a, b):
-                    mutex_a.append(b)
-
-    def is_mutex(self, a, b):
-        fve = self.problem.environment.free_vars_extractor
-
-        a_p = set(x.fluent() for p in a.preconditions for x in fve.get(p))
-        b_p = set(x.fluent() for p in b.preconditions for x in fve.get(p))
-        a_e = set(e.fluent.fluent() for e in a.effects)
-        b_e = set(e.fluent.fluent() for e in b.effects)
-
-        return not (a_p.isdisjoint(b_e) and b_p.isdisjoint(a_e) and a_e.isdisjoint(b_e))
 
     def chain_var(self, action, e, i, w):
         return self.symenc.chain_var(action, e, i, w)
@@ -87,19 +67,6 @@ class IncrementalEncoder(BaseEncoder):
 
         return self.mgr.And(l), self.mgr.And(temp_l)
 
-    def encode_mutex_constraints_old(self, i):
-        res = []
-        if not self.problem.kind.has_continuous_time():
-            for a, muts in self.mutexes.items():
-                if muts:
-                    res.append(
-                        self.mgr.Implies(
-                            self.a(a, i),
-                            self.mgr.And(self.mgr.Not(self.a(b, i)) for b in muts),
-                        )
-                    )
-        return self.mgr.And(res)
-
     def encode_step_zero(self) -> Optional[Any]:
         res = []
 
@@ -123,8 +90,7 @@ class IncrementalEncoder(BaseEncoder):
         res = []
         temp_res = []
 
-        # Time is non-negative and strictly increasing
-        res.append(self.mgr.LT(self.t(i - 1), self.t(i)))
+        res.append(self.encode_increasing_time(i))
 
         temp_res.append(self.mgr.Equals(self.t_last(), self.t(i)))
 
@@ -157,8 +123,14 @@ class IncrementalEncoder(BaseEncoder):
         # Frame axiom
         res.append(self.encode_frame_axiom(i))
 
-        # Mutex exclusions in non-temporal problems
-        res.append(self.encode_mutex_constraints_old(i))
+        # Non Self-Overlapping
+        if not self.problem.self_overlapping:
+            res.append(self.encode_non_self_overlapping(i))
+
+        # Mutex constraints
+        for j in range(1, i+1):
+            res.append(self.encode_mutex_constraints(j, i, i))
+            res.append(self.encode_mutex_constraints(i, j, i))
 
         # Add type constraints
         for c in self.symenc.type_constraints[i]:

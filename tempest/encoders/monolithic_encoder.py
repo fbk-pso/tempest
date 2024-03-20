@@ -29,68 +29,47 @@ class MonolithicEncoder(BaseEncoder):
 
         return self.mgr.Implies(self.a(action, i), self.mgr.And(l))
 
-    def encode_non_self_overlapping(self, i):
-        res = []
-        for act in self.problem.actions:
-            if not isinstance(act, DurativeAction):
-                continue
-            a_i = self.a(act, i)
-            a_i_params = tuple(self.param(act, p, i) for p in act.parameters)
-            for j in range(1, i):
-                a_j = self.a(act, j)
-                a_j_params = tuple(self.param(act, p, j) for p in act.parameters)
-                assert len(a_i_params) == len(a_j_params)
+    # TODO remove
+    # def encode_mutex_constraints(self, i, h):
+    #     res = []
+    #     def encode_timing(action, timing, step):
+    #         if isinstance(action, InstantaneousAction):
+    #             assert timing.is_from_start() and not timing.is_global()
+    #             return self.t(step)
+    #         elif isinstance(action, DurativeAction):
+    #             assert not timing.is_global()
+    #             return self.encode_tp(action, timing, step)
+    #         else:
+    #             # assert action is None and timing.is_global() -> It is commented due to a problem in the UnifiedPlanning test-cases, where some tils have StartTiming instead of GlobalStartTiming
+    #             return self.encode_problem_tp(timing, h)
 
-                same_parameters = self.mgr.And((self.mgr.EqualsOrIff(a_i_p, a_j_p) for a_i_p, a_j_p in zip(a_i_params, a_j_params)))
-                actions_and_same_parameters = self.mgr.And(a_i, a_j, same_parameters)
+    #     for (fluent_exp_a, action_a, timing_a, is_write_a, til_id_a), (fluent_exp_b, action_b, timing_b, is_write_b, til_id_b) in self._mutex_couples:
+    #         for j in range(1, h):
+    #             if i == j and action_a == action_b:
+    #                 continue
+    #             time_of_a = encode_timing(action_a, timing_a, i)
+    #             time_of_b = encode_timing(action_b, timing_b, j)
+    #             same_timing = self.mgr.Equals(time_of_a, time_of_b)
 
-                end_a_j = self.mgr.Plus(self.t(j), self.dur(act, j))
-                start_a_i = self.t(i)
-                end_a_j_before_start_a_i = self.mgr.LE(end_a_j, start_a_i)
+    #             if action_a is None:
+    #                 if action_b is None:
+    #                     # both are tils
+    #                     res.append(self.mgr.Not(same_timing))
+    #                 else:
+    #                     # a is a tils, b is an action
+    #                     b_j = self.a(action_b, j)
+    #                     res.append(self.mgr.Not(self.mgr.And(b_j, same_timing)))
+    #             else:
+    #                 a_i = self.a(action_a, i)
+    #                 if action_b is None:
+    #                     # a is an action, b is a tils
+    #                     res.append(self.mgr.Not(self.mgr.And(a_i, same_timing)))
+    #                 else:
+    #                     # both are actions
+    #                     b_j = self.a(action_b, j)
+    #                     res.append(self.mgr.Not(self.mgr.And(a_i, b_j, same_timing)))
 
-                res.append(self.mgr.Implies(actions_and_same_parameters, end_a_j_before_start_a_i))
-        return self.mgr.And(res)
-
-    def encode_mutex_constraints(self, i, h):
-        res = []
-        def encode_timing(action, timing, step):
-            if isinstance(action, InstantaneousAction):
-                assert timing.is_from_start() and not timing.is_global()
-                return self.t(step)
-            elif isinstance(action, DurativeAction):
-                assert not timing.is_global()
-                return self.encode_tp(action, timing, step)
-            else:
-                # assert action is None and timing.is_global() -> It is commented due to a problem in the UnifiedPlanning test-cases, where some tils have StartTiming instead of GlobalStartTiming
-                return self.encode_problem_tp(timing, h)
-
-        for (fluent_exp_a, action_a, timing_a, is_write_a, til_id_a), (fluent_exp_b, action_b, timing_b, is_write_b, til_id_b) in self._mutex_couples:
-            for j in range(1, h):
-                if i == j and action_a == action_b:
-                    continue
-                time_of_a = encode_timing(action_a, timing_a, i)
-                time_of_b = encode_timing(action_b, timing_b, j)
-                same_timing = self.mgr.Equals(time_of_a, time_of_b)
-
-                if action_a is None:
-                    if action_b is None:
-                        # both are tils
-                        res.append(self.mgr.Not(same_timing))
-                    else:
-                        # a is a tils, b is an action
-                        b_j = self.a(action_b, j)
-                        res.append(self.mgr.Not(self.mgr.And(b_j, same_timing)))
-                else:
-                    a_i = self.a(action_a, i)
-                    if action_b is None:
-                        # a is an action, b is a tils
-                        res.append(self.mgr.Not(self.mgr.And(a_i, same_timing)))
-                    else:
-                        # both are actions
-                        b_j = self.a(action_b, j)
-                        res.append(self.mgr.Not(self.mgr.And(a_i, b_j, same_timing)))
-
-        return self.mgr.And(res)
+    #     return self.mgr.And(res)
 
     def _create_fluents_modification_map(self) -> Dict[Fluent, Dict[FNode, Set[Tuple[Optional[Action], Timing, bool, Optional[int]]]]]:
         # Create a map from a fluent to the event time that modifies that fluent
@@ -163,26 +142,10 @@ class MonolithicEncoder(BaseEncoder):
 
         return fluents_modification_map
 
-    def _get_mutex_couples(self) -> List[Tuple[Event, Event]]:
-        mutex_couples: List[Tuple[Event, Event]] = []
-        fluents_modification_map = self._create_fluents_modification_map()
-        for fluent, modifications_map in fluents_modification_map.items():
-            for fluent_exp_a, modifications_set_a in modifications_map.items():
-                for action_a, timing_a, is_write_a, til_id_a in modifications_set_a:
-                    for fluent_exp_b, modifications_set_b in modifications_map.items():
-                        for action_b, timing_b, is_write_b, til_id_b in modifications_set_b:
-                            if (not is_write_a and not is_write_b) or (til_id_a is not None and til_id_a == til_id_b):
-                                continue
-                            a_tup = (fluent_exp_a, action_a, timing_a, is_write_a, til_id_a)
-                            b_tup = (fluent_exp_b, action_b, timing_b, is_write_b, til_id_b)
-                            mutex_couples.append((a_tup, b_tup))
-
-        return mutex_couples
-
     def encode_step_zero(self) -> Optional[Any]:
         return None
 
-    def encode_step(self, step: int) -> Tuple[Any, Any]:
+    def encode_step(self, h: int) -> Tuple[Any, Any]:
         res = []
 
         # Encode fluents initial values
@@ -191,27 +154,30 @@ class MonolithicEncoder(BaseEncoder):
         # Timed effects
         for t, le in self.problem.timed_effects.items():
             l = []
-            for i in range(1, step):
+            for i in range(1, h):
                 l.append(self.encode_effects(None, t, le, i, 0))
             res.append(self.mgr.Or(l))
 
-        for i in range(1, step):
-            # Time is non-negative and strictly increasing
-            res.append(self.mgr.LT(self.t(i - 1), self.t(i)))
+        for i in range(1, h):
+            res.append(self.encode_increasing_time(i))
 
             # Encode actions
             for a in self.problem.actions:
                 if isinstance(a, InstantaneousAction):
                     res.append(self.encode_instantaneous_action(a, i))
                 elif isinstance(a, DurativeAction):
-                    res.append(self.encode_durative_action(a, i, step))
+                    res.append(self.encode_durative_action(a, i, h))
 
             # Frame axiom
             res.append(self.encode_frame_axiom(i))
 
-            res.append(self.encode_mutex_constraints(i, step))
+            # Mutex constraints
+            for j in range(1, h):
+                res.append(self.encode_mutex_constraints(i, j, h))
 
-            res.append(self.encode_non_self_overlapping(i))
+            # Self-Overlapping
+            if not self.problem.self_overlapping:
+                res.append(self.encode_non_self_overlapping(i))
 
             # Add type constraints
             for c in self.symenc.type_constraints[i]:
@@ -221,16 +187,16 @@ class MonolithicEncoder(BaseEncoder):
         for it, lg in self.problem.timed_goals.items():
             g = self.em.And(lg)
             if it.lower == it.upper and it.lower.is_from_end() and it.lower.delay == 0:
-                res.append(self.to_smt(g, step - 1))
+                res.append(self.to_smt(g, h - 1))
             else:
                 if it.lower.is_from_start() and it.lower.delay == 0:
                     res.append(self.to_smt(g, 0))
-                for i in range(1, step):
-                    res.append(self.encode_condition_or_goal(None, it, g, i, 0, step))
-            res.append(self.mgr.LE(self.encode_problem_tp(it.upper), self.t(step - 1)))
+                for i in range(1, h):
+                    res.append(self.encode_condition_or_goal(None, it, g, i, 0, h))
+            res.append(self.mgr.LE(self.encode_problem_tp(it.upper), self.t(h - 1)))
 
         # Goals
         for g in self.problem.goals:
-            res.append(self.to_smt(g, step - 1))
+            res.append(self.to_smt(g, h - 1))
 
         return None, res

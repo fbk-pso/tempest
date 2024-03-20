@@ -37,7 +37,10 @@ jobs:
 
       - name: Create up.ini to install tempest  in the Unified Planning
         run: |
-          echo -e "[engine tempest]\nmodule_name: tempest.engine\nclass_name: TempestEngine" > .up.ini
+          echo -e "[engine tempest]\nmodule_name: tempest.engine\nclass_name: TempestEngine\n[engine tempest-ni]\nmodule_name: tempest.engine\nclass_name: TempestNonIncremental" > .up.ini
 
       - name: Run the report
-        run: python3 unified-planning/up_test_cases/report.py tempest -m oneshot -t 0.5
+        run: python3 unified-planning/up_test_cases/report.py tempest -m oneshot -t 3
+
+      - name: Run the report on non incremental
+        run: python3 unified-planning/up_test_cases/report.py tempest-ni -m oneshot -t 3

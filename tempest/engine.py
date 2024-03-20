@@ -27,7 +27,7 @@ credits = Credits(
 )
 
 
-class BaseEngine(up.engines.Engine, up.engines.mixins.OneshotPlannerMixin):
+class _BaseEngine(up.engines.Engine, up.engines.mixins.OneshotPlannerMixin):
     """Implementation of the base tempest engine."""
 
     def __init__(self, incremental=True, horizon=None):
@@ -80,7 +80,8 @@ class BaseEngine(up.engines.Engine, up.engines.mixins.OneshotPlannerMixin):
     def get_credits(**kwargs) -> Optional["up.engines.Credits"]:
         return credits
 
-class TempestEngine(BaseEngine):
+
+class TempestEngine(_BaseEngine):
     """Implementation of the TemPEST Engine."""
 
     @property
@@ -89,7 +90,7 @@ class TempestEngine(BaseEngine):
 
     @staticmethod
     def supported_kind() -> ProblemKind:
-        return BaseEngine._base_kind()
+        return _BaseEngine._base_kind()
 
     @staticmethod
     def supports(problem_kind: "up.model.ProblemKind") -> bool:
@@ -160,3 +161,8 @@ class TempestEngine(BaseEngine):
         return PlanGenerationResult(
             status, None, self.name
         )
+
+
+class TempestNonIncremental(TempestEngine):
+    def __init__(self, horizon=None):
+        super().__init__(False, horizon)
