@@ -65,7 +65,10 @@ class BaseEncoder(ABC):
         # probably, implementing this for a ground fluent is more efficient
         assert isinstance(fluent, Fluent)
         res = []
-        for action, timing, _ in self.touchers[fluent]:
+        fluent_touchers = self.touchers.get(fluent, None)
+        if fluent_touchers is None:
+            return self.mgr.FALSE()
+        for action, timing, _ in fluent_touchers:
             if action is None:
                 # TODO decomment assert (commented due problem in UP tests), assert timing.is_global()
                 til_in_abstract_step = self.mgr.GT(self.encode_problem_tp(timing, h), self.t(h-1))
@@ -83,8 +86,8 @@ class BaseEncoder(ABC):
                     effect_in_abstract_step = self.mgr.GT(effect_time, last_concrete_step_time)
                     effect_performed_in_abstract_step = self.mgr.And(a_i, effect_in_abstract_step)
                     res.append(effect_performed_in_abstract_step)
-        print(fluent)
-        print(self.mgr.Or(res))
+        # print(fluent)
+        # print(self.mgr.Or(res))
         return self.mgr.Or(res)
 
     def converter(self, i, w, scope):
@@ -217,9 +220,11 @@ class BaseEncoder(ABC):
             condition_abstract_step = self.mgr.Or((self.fluent_mod(exp.fluent(), h) for exp in fve.get(c)))
 
             extra_formula = self.mgr.Implies(start_condition_after_last_concrete_step, self.mgr.Or(condition_last_concrete_step, condition_abstract_step))
-            print(c, action)
-            print(condition_abstract_step.serialize())
-            print(extra_formula.serialize())
+            # print(c, action)
+            # print(condition_abstract_step.serialize())
+            # print(extra_formula.serialize())
+            print(f"base formula: {formula.serialize()}")
+            print(f"extra formula: {extra_formula.serialize()}")
             formula = self.mgr.And(formula, extra_formula)
 
         # print(formula.serialize())
@@ -506,7 +511,10 @@ class BaseEncoder(ABC):
                 return self.encode_problem_tp(timing, h)
 
         for (action_a, timing_a), (action_b, timing_b) in self._mutex_couples:
-            if i == j and action_a == action_b:
+            def is_global_end(timing):
+                return timing.is_global() and timing.is_from_end()
+
+            if (i == j and action_a == action_b) or is_global_end(timing_a) or is_global_end(timing_b):
                 continue
             time_of_a = encode_timing(action_a, timing_a, i)
             time_of_b = encode_timing(action_b, timing_b, j)
@@ -530,6 +538,9 @@ class BaseEncoder(ABC):
         return self.mgr.And(res)
 
     def encode_increasing_time(self, i):
+        if i == 1:
+            # t(0) <= t(1)
+            return self.mgr.LE(self.t(i - 1), self.t(i))
         if self.problem.epsilon is None:
             return self.mgr.LT(self.t(i - 1), self.t(i))
         assert self.problem.epsilon > 0

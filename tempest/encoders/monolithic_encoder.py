@@ -1,3 +1,4 @@
+from itertools import chain
 from typing import Any, Optional, Tuple
 from tempest.encoders.base_encoder import BaseEncoder
 from unified_planning.model import DurativeAction, InstantaneousAction
@@ -10,6 +11,7 @@ class MonolithicEncoder(BaseEncoder):
 
         # Action duration constraints
         l.append(self.encode_action_duration(action, i))
+        print(f"Action {action.name} step {i} duration: {l[-1].serialize()}\n")
         if not self.optimal:
             l.append(self.mgr.LE(self.mgr.Plus(self.t(i), self.dur(action, i)), self.t(h - 1)))
 
@@ -18,16 +20,21 @@ class MonolithicEncoder(BaseEncoder):
             c = self.em.And(lc)
             for k in range(i, h):
                 l.append(self.encode_condition_or_goal(action, it, c, k, i, h=h, optimal=self.optimal))
+                print(f"Action condition {c} at step {k}: {l[-1].serialize()}\n")
 
         # Action effects
         for t, le in action.effects.items():
             if t.is_from_start() and t.delay == 0:
                 l.append(self.encode_effects(action, t, le, i, i, h))
+
+                print(f"Action {action.name} {t} effects: {l[-1].serialize()}\n")
             else:
                 l2 = []
                 for k in range(i, h):
                     l2.append(self.encode_effects(action, t, le, k, i, h))
-                l.append(self.mgr.Or(l2))
+                if l2:
+                    l.append(self.mgr.Or(l2))
+                    print(f"Action {action.name} {t} effects: {l[-1].serialize()}\n")
 
         return self.mgr.Implies(self.a(action, i), self.mgr.And(l))
 
@@ -100,12 +107,15 @@ class MonolithicEncoder(BaseEncoder):
         # Encode fluents initial values
         res.append(self.initial_state())
 
+        print(f"initial state: {res[-1].serialize()}\n")
+
         # Timed effects
         for t, le in self.problem.timed_effects.items():
             l = []
             for i in range(1, h):
                 l.append(self.encode_effects(None, t, le, i, 0, h))
             res.append(self.mgr.Or(l))
+            print(f"timed effects: {res[-1].serialize()}\n")
 
         for i in range(1, h+1):
 
@@ -118,32 +128,49 @@ class MonolithicEncoder(BaseEncoder):
                         res.append(self.encode_instantaneous_action(a, i))
                 elif isinstance(a, DurativeAction):
                     res.append(self.encode_durative_action(a, i, h))
+                print(f"{a.name} formula {i}: {res[-1].serialize()}\n")
 
             if i < h:
                 res.append(self.encode_increasing_time(i))
+                print(f"increasing_time{i}: {res[-1].serialize()}\n")
 
                 # Mutex constraints
                 for j in range(1, h):
                     res.append(self.encode_mutex_constraints(i, j, h))
 
+                    print(f"mutex_constraints {i}, {j}: {res[-1].serialize()}\n")
+
                 # Self-Overlapping
                 if not self.problem.self_overlapping:
                     res.append(self.encode_non_self_overlapping(i))
 
+                    print(f"non self-overlapping {i}: {res[-1].serialize()}\n")
+
                 # Frame axiom
                 res.append(self.encode_frame_axiom(i, h))
+                print(f"frame axiom {i}: {res[-1].serialize()}\n")
 
                 # Add type constraints
                 res.extend(self.symenc.type_constraints[i])
+                for j, c in enumerate(self.symenc.type_constraints[i]):
+                    print(f"type constraints {i}, {j}: {c}\n")
 
         if self.optimal:
             res.append(self.encode_density_constraints(h))
+            print(f"density_constraints {h}: {res[-1].serialize()}\n")
 
         res.append(self.encode_timed_goals(h, self.optimal))
 
+        print(f"timed goals {h}: {res[-1].serialize()}\n")
+
         # Goals
+        fve = self.problem.environment.free_vars_extractor
         for g in self.problem.goals:
-            res.append(self.to_smt(g, h - 1))
+            goal_formula = self.to_smt(g, h - 1)
+            if self.optimal:
+                goal_formula = self.mgr.Or(chain([goal_formula], (self.fluent_mod(exp.fluent(), h) for exp in fve.get(g))))
+            res.append(goal_formula)
+            print(f"goal {g}: {res[-1].serialize()}\n")
 
         return None, res
 

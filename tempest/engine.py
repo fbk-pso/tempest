@@ -170,6 +170,8 @@ class TempestNonIncremental(TempestEngine):
 
 class TempestOptimalEngine(_BaseEngine):
     """Implementation of the TemPEST Optimal Engine."""
+    def __init__(self, incremental=False, horizon=None):
+        super().__init__(incremental, horizon)
 
     @property
     def name(self) -> str:
@@ -218,12 +220,12 @@ class TempestOptimalEngine(_BaseEngine):
         start_time = time()
         is_in_timeout: bool = False
 
-        with Optimizer(logic="QF_NRA") as omt:
+        with Optimizer(logic="QF_LRA") as omt:
             step_zero = encoder.encode_step_zero()
             if step_zero is not None:
                 omt.add_assertion(step_zero)
             h = 2
-            self.horizon = 10 # TODO remove
+            #self.horizon = 6 # TODO remove
             while self.horizon is None or h <= self.horizon:
                 formula, assumptions = encoder.encode_step(modify_horizon(h))
                 if formula is not None:
@@ -236,13 +238,32 @@ class TempestOptimalEngine(_BaseEngine):
                     for ec in extra_constraints:
                         omt.add_assertion(ec)
                 optimization_result = omt.optimize(minimization_goal)
+                ## debug
+                for i in range(h+1):
+                    if i != h:
+                        t = omt.get_py_value(encoder.t(i))
+                        print(encoder.t(i), "=", t)
+                    for a in encoder.problem.actions:
+                        if omt.get_py_value(encoder.a(a, i)):
+                            print(encoder.a(a, i))
+                            d = (
+                                omt.get_py_value(encoder.dur(a, i))
+                                if isinstance(a, up.model.DurativeAction)
+                                else None
+                            )
+
+                ## end debug
                 if optimization_result is not None:
                     model, makespan = optimization_result
+                    # print(encoder._uses_abstact_step(h))
                     uses_abstract_step = model.get_value(encoder._uses_abstact_step(h)).is_true()
+                    # print(model.get_value(encoder._uses_abstact_step(h)))
                     if uses_abstract_step:
                         elapsed_time = time() - start_time
                         if output_stream is not None:
                             output_stream.write(f"Makespan with bound {h}: {makespan}. Elapsed_time: {elapsed_time:.3f} seconds\n")
+
+                        print(f"Makespan with bound {h}: {makespan}. Elapsed_time: {elapsed_time:.3f} seconds\n")
                         h += 1
                         if timeout is not None and elapsed_time > timeout:
                             is_in_timeout = True
@@ -261,11 +282,13 @@ class TempestOptimalEngine(_BaseEngine):
                             return res
 
                 else:
-                    h = h+1
-                    # elapsed_time = time() - start_time
-                    # if output_stream is not None:
-                    #     output_stream.write(f"Found unsolvable at step {h}. Elapsed_time: {elapsed_time:.3f} seconds\n")
-                    # break
+                    print("h =", h)
+                    print("UNSAT")
+                    # print(formula)
+                    assert formula is None
+                    # for a in assumptions:
+                    #     print(a.serialize())
+                    break
                 omt.pop()
 
         status = PlanGenerationResultStatus.TIMEOUT if is_in_timeout else PlanGenerationResultStatus.UNSOLVABLE_INCOMPLETELY
