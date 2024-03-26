@@ -7,18 +7,17 @@ import pysmt
 import unified_planning as up
 
 from unified_planning.plans import SequentialPlan, TimeTriggeredPlan
-from unified_planning.model import DurativeAction, FNode, Fluent, Action, Timing, InstantaneousAction, StartTiming, GlobalEndTiming
+from unified_planning.model import DurativeAction, FNode, Fluent, Action, Timing, InstantaneousAction, StartTiming, GlobalEndTiming, Effect
 from unified_planning.model.fluent import get_all_fluent_exp
 from tempest.converter import SMTConverter
 from tempest.encoders.symbol_encoder import SymbolEncoder
 
 # An Event is a tuple made of:
-#   The expression of the event (FNode)
 #   The action of the mutex (Action), if None is a TIL
 #   The Timing in the Action/Problem
-#   True if the event is an effect, False if it's a condition
-#   In case of a TIL, it's ID
-Event = Tuple[Optional[Action], Timing]
+#   The FrozenSet of conditions
+#   The FrozenSet of effects
+Event = Tuple[Optional[Action], Timing, FrozenSet[FNode], FrozenSet[Effect]]
 
 
 class BaseEncoder(ABC):
@@ -467,36 +466,39 @@ class BaseEncoder(ABC):
 
     #     return mutex_couples
 
-    def _get_event_list(self) -> Set[Event]:
+    def _get_events(self) -> Set[Event]:
         events: Set[Event] = set()
         start_timing = StartTiming()
         global_end_timing = GlobalEndTiming()
 
         for act in self.problem.actions:
             if isinstance(act, InstantaneousAction):
-                events.add((act, start_timing))
+                events.add((act, start_timing, frozenset(act.preconditions), frozenset(act.effects)))
             else:
                 assert isinstance(act, DurativeAction)
-                for interval in act.conditions.keys():
+                for interval, cl in act.conditions.items():
+                    conds = frozenset(cl)
+                    effs = frozenset()
                     if not interval.is_left_open():
-                        events.add((act, interval.lower))
+                        events.add((act, interval.lower, conds, effs))
                     if not interval.is_right_open():
-                        events.add((act, interval.upper))
+                        events.add((act, interval.upper, conds, effs))
 
-                for timing in act.effects.keys():
-                    events.add((act, timing))
+                for timing, el in act.effects.items():
+                    events.add((act, timing, frozenset(), frozenset(el)))
 
-        for interval in self.problem.timed_goals.keys():
+        for interval, cl in self.problem.timed_goals.items():
+            conds = frozenset(cl)
+            effs = frozenset()
             if not interval.is_left_open():
-                events.add((None, interval.lower))
+                events.add((None, interval.lower, conds, effs))
             if not interval.is_right_open():
-                events.add((None, interval.upper))
+                events.add((None, interval.upper, conds, effs))
 
-        for timing in self.problem.timed_effects.keys():
-            events.add((None, timing))
+        for timing, el in self.problem.timed_effects.items():
+            events.add((None, timing, frozenset(), frozenset(el)))
 
-        for _ in self.problem.goals:
-            events.add((None, global_end_timing))
+        events.add((None, global_end_timing, frozenset(self.problem.goals), frozenset()))
 
         return events
 
@@ -538,19 +540,15 @@ class BaseEncoder(ABC):
 
     def _get_mutex_couples(self) -> Set[FrozenSet[Event]]:
         mutex_couples: Set[FrozenSet[Event]] = set()
-        events = self._get_event_list()
-        for event_a in events:
-            action_a, timing_a = event_a
-            for event_b in events:
-                action_b, timing_b = event_b
+        events = list(self._get_events())
+        for i, event_a in enumerate(events):
+            action_a, timing_a, cond_a, eff_a = event_a
+            for event_b in events[i+1:]:
+                action_b, timing_b, cond_b, eff_b = event_b
                 if action_a == action_b and (action_a is None or timing_a == timing_b):
                     continue
-                cond_a = self._get_conditions(action_a, timing_a)
-                eff_a = self._get_effects(action_a, timing_a)
-                cond_b = self._get_conditions(action_b, timing_b)
-                eff_b = self._get_effects(action_b, timing_b)
                 if self.is_mutex(cond_a, eff_a, cond_b, eff_b):
-                    mutex_couples.add(frozenset((event_a, event_b)))
+                    mutex_couples.add(frozenset(((action_a, timing_a), (action_b, timing_b))))
         return mutex_couples
 
     def encode_mutex_constraints(self, i, j, h):
