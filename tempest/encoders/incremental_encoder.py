@@ -1,4 +1,3 @@
-from itertools import chain
 from typing import Any, Optional
 from tempest.encoders.base_encoder import BaseEncoder
 

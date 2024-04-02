@@ -1,6 +1,6 @@
-from typing import Any, List, Optional, Tuple, Dict, Set
-from tempest.encoders.base_encoder import BaseEncoder, Event
-from unified_planning.model import DurativeAction, FNode, Fluent, Action, Timing, InstantaneousAction, StartTiming, GlobalEndTiming
+from typing import Any, Optional, Tuple
+from tempest.encoders.base_encoder import BaseEncoder
+from unified_planning.model import DurativeAction, InstantaneousAction
 
 
 class MonolithicEncoder(BaseEncoder):

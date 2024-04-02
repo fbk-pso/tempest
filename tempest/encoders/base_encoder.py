@@ -1,14 +1,13 @@
 from itertools import chain
-from typing import Any, FrozenSet, List, Optional, Set, Tuple, Dict
+from typing import Any, FrozenSet, Optional, Set, Tuple
 from abc import ABC, abstractmethod
-
-
 import pysmt
-import unified_planning as up
 
+import unified_planning as up
 from unified_planning.plans import SequentialPlan, TimeTriggeredPlan
-from unified_planning.model import DurativeAction, FNode, Fluent, Action, Timing, InstantaneousAction, StartTiming, GlobalEndTiming, Effect
+from unified_planning.model import DurativeAction, FNode, Action, Timing, InstantaneousAction, StartTiming, GlobalEndTiming, Effect
 from unified_planning.model.fluent import get_all_fluent_exp
+
 from tempest.converter import SMTConverter
 from tempest.encoders.symbol_encoder import SymbolEncoder
 
