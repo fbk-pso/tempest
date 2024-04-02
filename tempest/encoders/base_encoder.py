@@ -1,94 +1,25 @@
+from itertools import chain
+from typing import Any, FrozenSet, Optional, Set, Tuple
+from abc import ABC, abstractmethod
 import pysmt
+
 import unified_planning as up
-
-from functools import lru_cache
 from unified_planning.plans import SequentialPlan, TimeTriggeredPlan
+from unified_planning.model import DurativeAction, FNode, Action, Timing, InstantaneousAction, StartTiming, GlobalEndTiming, Effect
 from unified_planning.model.fluent import get_all_fluent_exp
+
 from tempest.converter import SMTConverter
+from tempest.encoders.symbol_encoder import SymbolEncoder
+
+# An Event is a tuple made of:
+#   The action of the mutex (Action), if None is a TIL
+#   The Timing in the Action/Problem
+#   The FrozenSet of conditions
+#   The FrozenSet of effects
+Event = Tuple[Optional[Action], Timing, FrozenSet[FNode], FrozenSet[Effect]]
 
 
-class SymbolEncoder:
-    def __init__(self, objects, pysmt_env=None):
-        self.pysmt_env = pysmt_env if pysmt_env else pysmt.shortcuts.get_env()
-        self.mgr = self.pysmt_env.formula_manager
-        self.objects = objects
-        self.type_constraints = {}
-        self.c = 0
-
-    @lru_cache(maxsize=None)
-    def t(self, i):
-        return self.mgr.Symbol(f"t@{i}", pysmt.shortcuts.REAL)
-
-    @lru_cache(maxsize=None)
-    def t_last(self):
-        return self.mgr.Symbol(f"t@last", pysmt.shortcuts.REAL)
-
-    @lru_cache(maxsize=None)
-    def action(self, action, i):
-        return self.mgr.Symbol(f"act_{action.name}@{i}")
-
-    @lru_cache(maxsize=None)
-    def chain_var(self, action, e, i, w):
-        self.c += 1
-        if action is None:
-            return self.mgr.Symbol(f"problem_{self.c}@{i}-{w}")
-        else:
-            return self.mgr.Symbol(f"act_{action.name}_{self.c}@{i}-{w}")
-
-    @lru_cache(maxsize=None)
-    def duration(self, action, i):
-        return self.mgr.Symbol(f"dur_{action.name}@{i}", pysmt.shortcuts.REAL)
-
-    @lru_cache(maxsize=None)
-    def fluent(self, fluent, args, i):
-        smt_type, lb, ub = self.type_to_smt(fluent.type)
-        args_str = f"_{'_'.join([str(a) for a in args])}"
-        res = self.mgr.Symbol(f"fluent_{fluent.name}{args_str}@{i}", smt_type)
-        self.add_type_constraints(res, fluent.type, lb, ub, i)
-        return res
-
-    @lru_cache(maxsize=None)
-    def parameter(self, action, parameter, i):
-        smt_type, lb, ub = self.type_to_smt(parameter.type)
-        res = self.mgr.Symbol(f"parameter_{action.name}_{parameter.name}@{i}", smt_type)
-        self.add_type_constraints(res, parameter.type, lb, ub, i)
-        return res
-
-    def add_type_constraints(self, symbol, type, lb, ub, i):
-        self.type_constraints.setdefault(i, set())
-        if type.is_user_type():
-            l = []
-            for p in range(lb, ub+1):
-                l.append(self.mgr.Equals(symbol, self.mgr.Real(p)))
-            self.type_constraints[i].add(self.mgr.Or(l))
-        else:
-            if lb is not None:
-                self.type_constraints[i].add(self.mgr.GE(symbol, self.mgr.Real(lb)))
-            if ub is not None:
-                self.type_constraints[i].add(self.mgr.LE(symbol, self.mgr.Real(ub)))
-
-    def type_to_smt(self, type):
-        if type.is_bool_type():
-            return pysmt.shortcuts.BOOL, None, None
-        elif type.is_int_type():
-            lb, ub = type.lower_bound, type.upper_bound
-            return pysmt.shortcuts.REAL, lb, ub
-        elif type.is_real_type():
-            lb, ub = type.lower_bound, type.upper_bound
-            return pysmt.shortcuts.REAL, lb, ub
-        elif type.is_user_type():
-            lb = None
-            for obj, i in self.objects.items():
-                if obj.type == type:
-                    if lb is None:
-                        lb = i
-                    ub = i
-            return pysmt.shortcuts.REAL, lb, ub
-        else:
-            raise NotImplementedError(f"Unknown type in conversion: {type}")
-
-
-class ProblemEncoder:
+class BaseEncoder(ABC):
     def __init__(self, problem, pysmt_env=None):
         self.problem = problem
         self.em = self.problem.environment.expression_manager
@@ -111,10 +42,10 @@ class ProblemEncoder:
 
         self.touchers = {}
         for a in self.problem.actions:
-            if isinstance(a, up.model.InstantaneousAction):
+            if isinstance(a, InstantaneousAction):
                 for e in a.effects:
                     self.touchers.setdefault(e.fluent.fluent(), []).append((a, None, e))
-            elif isinstance(a, up.model.DurativeAction):
+            elif isinstance(a, DurativeAction):
                 for t, le in a.effects.items():
                     for e in le:
                         self.touchers.setdefault(e.fluent.fluent(), []).append(
@@ -124,27 +55,7 @@ class ProblemEncoder:
             for e in le:
                 self.touchers.setdefault(e.fluent.fluent(), []).append((None, t, e))
 
-        self.mutexes = {}
-        for a in self.problem.actions:
-            if not isinstance(a, up.model.InstantaneousAction):
-                continue
-            mutex_a = []
-            self.mutexes[a] = mutex_a
-            for b in self.problem.actions:
-                if not isinstance(b, up.model.InstantaneousAction):
-                    continue
-                if a != b and self.is_mutex(a, b):
-                    mutex_a.append(b)
-
-    def is_mutex(self, a, b):
-        fve = self.problem.environment.free_vars_extractor
-
-        a_p = set(x.fluent() for p in a.preconditions for x in fve.get(p))
-        b_p = set(x.fluent() for p in b.preconditions for x in fve.get(p))
-        a_e = set(e.fluent.fluent() for e in a.effects)
-        b_e = set(e.fluent.fluent() for e in b.effects)
-
-        return not (a_p.isdisjoint(b_e) and b_p.isdisjoint(a_e) and a_e.isdisjoint(b_e))
+        self._mutex_couples: Set[FrozenSet[Event]] = self._get_mutex_couples()
 
     def converter(self, i, w, scope):
         key = (None, i, w) if scope is None else (scope.name, i, w)
@@ -180,11 +91,11 @@ class ProblemEncoder:
     def a(self, action, i):
         return self.symenc.action(action, i)
 
+    def param(self, action, parameter, i):
+        return self.symenc.parameter(action, parameter, i)
+
     def dur(self, action, i):
         return self.symenc.duration(action, i)
-
-    def chain_var(self, action, e, i, w):
-        return self.symenc.chain_var(action, e, i, w)
 
     def encode_tp(self, action, t, i):
         smt_t = self.t(i)
@@ -201,7 +112,7 @@ class ProblemEncoder:
                 tp = self.mgr.Plus(smt_t, smt_dur)
         return tp
 
-    def encode_problem_tp(self, t, h=None):
+    def encode_problem_tp(self, t, h):
         if t.is_from_start():
             return self.mgr.Real(t.delay)
         else:
@@ -230,7 +141,7 @@ class ProblemEncoder:
     def encode_effects(self, action, t, le, i, w):
         if action is None:
             assert t.is_from_start()
-            smt_tp = self.encode_problem_tp(t)
+            smt_tp = self.encode_problem_tp(t, None)
         else:
             smt_tp = self.encode_tp(action, t, w)
         eff = [self.mgr.Equals(self.t(i), smt_tp)]
@@ -238,7 +149,7 @@ class ProblemEncoder:
             eff.append(self.encode_effect(action, e, i, w))
         return self.mgr.And(eff)
 
-    def encode_condition_or_goal(self, action, it, c, i, w, h=None):
+    def encode_condition_or_goal(self, action, it, c, i, w, h):
         if action is None:
             smt_tp_1 = self.encode_problem_tp(it.lower, h)
             smt_tp_2 = self.encode_problem_tp(it.upper, h)
@@ -279,86 +190,6 @@ class ProblemEncoder:
             l.append(self.mgr.LE(smt_dur, smt_upper))
         return self.mgr.And(l)
 
-    def encode_incremental_durative_action(self, action, i):
-        l = []
-        temp_l = []
-
-        conjunction = []
-        conjunction.append(self.encode_action_duration(action, i))
-        conjunction.append(
-            self.mgr.LE(self.mgr.Plus(self.t(i), self.dur(action, i)), self.t_last())
-        )
-
-        # Action conditions
-        for it, lc in action.conditions.items():
-            c = self.em.And(lc)
-            ev = (it, c)
-            conjunction.append(self.chain_var(action, ev, i, i))
-            for w in range(1, i + 1):
-                temp_l.append(
-                    self.mgr.Implies(
-                        self.chain_var(action, ev, i + 1, w), self.mgr.Bool(True)
-                    )
-                )
-                rhs = self.encode_tp(action, it.upper, w)
-                l.append(
-                    self.mgr.Implies(self.a(action, w), self.mgr.LE(rhs, self.t_last()))
-                )
-                formula = self.encode_condition_or_goal(action, it, c, i, w)
-                l.append(
-                    self.mgr.Implies(
-                        self.chain_var(action, ev, i, w),
-                        self.mgr.And(formula, self.chain_var(action, ev, i + 1, w)),
-                    )
-                )
-
-        # Action effects
-        for t, le in action.effects.items():
-            ev = (t, tuple(le))
-            conjunction.append(self.chain_var(action, ev, i, i))
-            for w in range(1, i + 1):
-                temp_l.append(
-                    self.mgr.Implies(
-                        self.chain_var(action, ev, i + 1, w), self.mgr.Bool(False)
-                    )
-                )
-                formula = self.encode_effects(action, t, le, i, w)
-                l.append(
-                    self.mgr.Implies(
-                        self.chain_var(action, ev, i, w),
-                        self.mgr.Or(formula, self.chain_var(action, ev, i + 1, w)),
-                    )
-                )
-
-        l.append(self.mgr.Implies(self.a(action, i), self.mgr.And(conjunction)))
-
-        return self.mgr.And(l), self.mgr.And(temp_l)
-
-    def encode_durative_action(self, action, i, h):
-        l = []
-
-        # Action duration constraints
-        l.append(self.encode_action_duration(action, i))
-        l.append(self.mgr.LE(self.mgr.Plus(self.t(i), self.dur(action, i)), self.t(h - 1)))
-
-        # Action conditions
-        for it, lc in action.conditions.items():
-            c = self.em.And(lc)
-            for k in range(i, h):
-                l.append(self.encode_condition_or_goal(action, it, c, k, i))
-
-        # Action effects
-        for t, le in action.effects.items():
-            if t.is_from_start() and t.delay == 0:
-                l.append(self.encode_effects(action, t, le, i, i))
-            else:
-                l2 = []
-                for k in range(i, h):
-                    l2.append(self.encode_effects(action, t, le, k, i))
-                l.append(self.mgr.Or(l2))
-
-        return self.mgr.Implies(self.a(action, i), self.mgr.And(l))
-
     def encode_instantaneous_action(self, action, i):
         l = []
         smt_a = self.a(action, i)
@@ -373,7 +204,7 @@ class ProblemEncoder:
 
         return self.mgr.Implies(smt_a, self.mgr.And(l))
 
-    def encode_frame_axiom(self, i):
+    def encode_frame_axiom(self, i, h):
         res = []
         for f in self.problem.fluents:
             if f in self.static_fluents:
@@ -388,7 +219,7 @@ class ProblemEncoder:
                 disjunctions = []  # List of possible events that can change the value
                 for a, t, e in self.touchers.get(f, []):
                     if a is None:  # Timed effect
-                        conj = [self.mgr.Equals(self.t(i), self.encode_problem_tp(t))]
+                        conj = [self.mgr.Equals(self.t(i), self.encode_problem_tp(t, h))]
                         conj.append(self.to_smt(e.condition, i-1))
                         trivially_false = False
                         for z, p in enumerate(e.fluent.args):
@@ -456,17 +287,48 @@ class ProblemEncoder:
                             )
         return self.mgr.And(res)
 
-    def encode_mutex_constraints(self, i):
+    def is_mutex(self, a_precond, a_effects, b_precond, b_effects):
+        fve = self.problem.environment.free_vars_extractor
+
+        a_p = set(x.fluent() for p in a_precond for x in fve.get(p))
+        b_p = set(x.fluent() for p in b_precond for x in fve.get(p))
+
+        def get_red_fluents(effect):
+            for x in chain(*map(fve.get, (effect.condition, effect.fluent, effect.value))):
+                yield x.fluent()
+
+        a_e = set()
+        for e in a_effects:
+            a_e.add(e.fluent.fluent())
+            a_p.update(get_red_fluents(e))
+
+        b_e = set()
+        for e in b_effects:
+            b_e.add(e.fluent.fluent())
+            b_p.update(get_red_fluents(e))
+
+        return not (a_p.isdisjoint(b_e) and b_p.isdisjoint(a_e) and a_e.isdisjoint(b_e))
+
+    def encode_non_self_overlapping(self, i):
         res = []
-        if not self.problem.kind.has_continuous_time():
-            for a, muts in self.mutexes.items():
-                if muts:
-                    res.append(
-                        self.mgr.Implies(
-                            self.a(a, i),
-                            self.mgr.And(self.mgr.Not(self.a(b, i)) for b in muts),
-                        )
-                    )
+        for act in self.problem.actions:
+            if not isinstance(act, DurativeAction):
+                continue
+            a_i = self.a(act, i)
+            a_i_params = tuple(self.param(act, p, i) for p in act.parameters)
+            for j in range(1, i):
+                a_j = self.a(act, j)
+                a_j_params = tuple(self.param(act, p, j) for p in act.parameters)
+                assert len(a_i_params) == len(a_j_params)
+
+                same_parameters = self.mgr.And((self.mgr.EqualsOrIff(a_i_p, a_j_p) for a_i_p, a_j_p in zip(a_i_params, a_j_params)))
+                actions_and_same_parameters = self.mgr.And(a_i, a_j, same_parameters)
+
+                end_a_j = self.mgr.Plus(self.t(j), self.dur(act, j))
+                start_a_i = self.t(i)
+                end_a_j_before_start_a_i = self.mgr.LE(end_a_j, start_a_i)
+
+                res.append(self.mgr.Implies(actions_and_same_parameters, end_a_j_before_start_a_i))
         return self.mgr.And(res)
 
     def initial_state(self):
@@ -478,138 +340,6 @@ class ProblemEncoder:
         for c in self.symenc.type_constraints[0]:
             res.append(c)
         return self.mgr.And(res)
-
-    def monolithic_bounded_planning(self, h):
-        res = []
-
-        # Encode fluents initial values
-        res.append(self.initial_state())
-
-        # Timed effects
-        for t, le in self.problem.timed_effects.items():
-            l = []
-            for i in range(1, h):
-                l.append(self.encode_effects(None, t, le, i, 0))
-            res.append(self.mgr.Or(l))
-
-        for i in range(1, h):
-            # Time is non-negative and strictly increasing
-            res.append(self.mgr.LT(self.t(i - 1), self.t(i)))
-
-            # Encode actions
-            for a in self.problem.actions:
-                if isinstance(a, up.model.InstantaneousAction):
-                    res.append(self.encode_instantaneous_action(a, i))
-                elif isinstance(a, up.model.DurativeAction):
-                    res.append(self.encode_durative_action(a, i, h))
-
-            # Frame axiom
-            res.append(self.encode_frame_axiom(i))
-
-            # Mutex exclusions in non-temporal problems
-            res.append(self.encode_mutex_constraints(i))
-
-            # Add type constraints
-            for c in self.symenc.type_constraints[i]:
-                res.append(c)
-
-        # Timed goals
-        for it, lg in self.problem.timed_goals.items():
-            g = self.em.And(lg)
-            if it.lower == it.upper and it.lower.is_from_end() and it.lower.delay == 0:
-                res.append(self.to_smt(g, h - 1))
-            else:
-                if it.lower.is_from_start() and it.lower.delay == 0:
-                    res.append(self.to_smt(g, 0))
-                for i in range(1, h):
-                    res.append(self.encode_condition_or_goal(None, it, g, i, 0, h))
-            res.append(self.mgr.LE(self.encode_problem_tp(it.upper), self.t(h - 1)))
-
-        # Goals
-        for g in self.problem.goals:
-            res.append(self.to_smt(g, h - 1))
-
-        return self.mgr.And(res)
-
-    def incremental_step_zero(self):
-        res = []
-
-        # Encode fluents initial values
-        res.append(self.initial_state())
-
-        # Timed effects
-        for t, le in self.problem.timed_effects.items():
-            ev = (t, tuple(le))
-            res.append(self.chain_var(None, ev, 1, 0))
-
-        # Timed goals
-        for it, lg in self.problem.timed_goals.items():
-            g = self.em.And(lg)
-            if it.lower.is_from_start() and it.lower.delay == 0:
-                res.append(self.to_smt(g, 0, 0, scope=None))
-
-        return self.mgr.And(res)
-
-    def incremental_step(self, i):
-        res = []
-        temp_res = []
-
-        # Time is non-negative and strictly increasing
-        res.append(self.mgr.LT(self.t(i - 1), self.t(i)))
-
-        temp_res.append(self.mgr.Equals(self.t_last(), self.t(i)))
-
-        # Timed effect
-        for t, le in self.problem.timed_effects.items():
-            assert t.is_from_start()
-            ev = (t, tuple(le))
-            formula = self.encode_effects(None, t, le, i, 0)
-            res.append(
-                self.mgr.Implies(
-                    self.chain_var(None, ev, i, 0),
-                    self.mgr.Or(formula, self.chain_var(None, ev, i + 1, 0)),
-                )
-            )
-            temp_res.append(
-                self.mgr.Implies(
-                    self.chain_var(None, ev, i + 1, 0), self.mgr.Bool(False)
-                )
-            )
-
-        # Actions
-        for a in self.problem.actions:
-            if isinstance(a, up.model.InstantaneousAction):
-                res.append(self.encode_instantaneous_action(a, i))
-            elif isinstance(a, up.model.DurativeAction):
-                f, tf = self.encode_incremental_durative_action(a, i)
-                res.append(f)
-                temp_res.append(tf)
-
-        # Frame axiom
-        res.append(self.encode_frame_axiom(i))
-
-        # Mutex exclusions in non-temporal problems
-        res.append(self.encode_mutex_constraints(i))
-
-        # Add type constraints
-        for c in self.symenc.type_constraints[i]:
-            res.append(c)
-
-        # Timed goals
-        for it, lg in self.problem.timed_goals.items():
-            g = self.em.And(lg)
-            if it.lower == it.upper and it.lower.is_from_end() and it.lower.delay == 0:
-                temp_res.append(self.to_smt(g, i, 0))
-            else:
-                res.append(self.encode_condition_or_goal(None, it, g, i, 0))
-                res.append(self.mgr.LE(self.encode_problem_tp(it.upper), self.t_last()))
-
-        # Goals
-        temp_res.append(
-            self.to_smt(self.em.And(self.problem.goals), i, 0, scope=None)
-        )
-
-        return self.mgr.And(res), self.mgr.And(temp_res)
 
     def extract_plan(self, model, h):
         res = []
@@ -637,3 +367,103 @@ class ProblemEncoder:
             return TimeTriggeredPlan(res)
         else:
             return SequentialPlan([ai for _, ai, _ in res])
+
+    @abstractmethod
+    def encode_step_zero(self) -> Optional[Any]:
+        pass
+
+    @abstractmethod
+    def encode_step(self, step: int) -> Tuple[Any, Any]:
+        pass
+
+    def _get_events(self) -> Set[Event]:
+        events: Set[Event] = set()
+        start_timing = StartTiming()
+        global_end_timing = GlobalEndTiming()
+
+        for act in self.problem.actions:
+            if isinstance(act, InstantaneousAction):
+                events.add((act, start_timing, frozenset(act.preconditions), frozenset(act.effects)))
+            else:
+                assert isinstance(act, DurativeAction)
+                for interval, cl in act.conditions.items():
+                    conds = frozenset(cl)
+                    effs = frozenset()
+                    if not interval.is_left_open():
+                        events.add((act, interval.lower, conds, effs))
+                    if not interval.is_right_open():
+                        events.add((act, interval.upper, conds, effs))
+
+                for timing, el in act.effects.items():
+                    events.add((act, timing, frozenset(), frozenset(el)))
+
+        for interval, cl in self.problem.timed_goals.items():
+            conds = frozenset(cl)
+            effs = frozenset()
+            if not interval.is_left_open():
+                events.add((None, interval.lower, conds, effs))
+            if not interval.is_right_open():
+                events.add((None, interval.upper, conds, effs))
+
+        for timing, el in self.problem.timed_effects.items():
+            events.add((None, timing, frozenset(), frozenset(el)))
+
+        events.add((None, global_end_timing, frozenset(self.problem.goals), frozenset()))
+
+        return events
+
+    def _get_mutex_couples(self) -> Set[FrozenSet[Event]]:
+        mutex_couples: Set[FrozenSet[Event]] = set()
+        events = list(self._get_events())
+        for i, event_a in enumerate(events):
+            action_a, timing_a, cond_a, eff_a = event_a
+            for event_b in events[i+1:]:
+                action_b, timing_b, cond_b, eff_b = event_b
+                if action_a == action_b and (action_a is None or timing_a == timing_b):
+                    continue
+                if self.is_mutex(cond_a, eff_a, cond_b, eff_b):
+                    mutex_couples.add(frozenset(((action_a, timing_a), (action_b, timing_b))))
+        return mutex_couples
+
+    def encode_mutex_constraints(self, i, j, h):
+        res = []
+        def encode_timing(action, timing, step):
+            if isinstance(action, InstantaneousAction):
+                assert timing.is_from_start() and not timing.is_global()
+                return self.t(step)
+            elif isinstance(action, DurativeAction):
+                assert not timing.is_global()
+                return self.encode_tp(action, timing, step)
+            else:
+                # assert action is None and timing.is_global() -> It is commented due to a problem in the UnifiedPlanning test-cases, where some tils have StartTiming instead of GlobalStartTiming
+                return self.encode_problem_tp(timing, h)
+
+        for (action_a, timing_a), (action_b, timing_b) in self._mutex_couples:
+            if i == j and action_a == action_b:
+                continue
+            time_of_a = encode_timing(action_a, timing_a, i)
+            time_of_b = encode_timing(action_b, timing_b, j)
+            same_timing = self.mgr.Equals(time_of_a, time_of_b)
+
+            if action_a is None:
+                assert action_b is not None
+                # a is a tils, b is an action
+                b_j = self.a(action_b, j)
+                res.append(self.mgr.Not(self.mgr.And(b_j, same_timing)))
+            else:
+                a_i = self.a(action_a, i)
+                if action_b is None:
+                    # a is an action, b is a tils
+                    res.append(self.mgr.Not(self.mgr.And(a_i, same_timing)))
+                else:
+                    # both are actions
+                    b_j = self.a(action_b, j)
+                    res.append(self.mgr.Not(self.mgr.And(a_i, b_j, same_timing)))
+
+        return self.mgr.And(res)
+
+    def encode_increasing_time(self, i):
+        if self.problem.epsilon is None:
+            return self.mgr.LT(self.t(i - 1), self.t(i))
+        assert self.problem.epsilon > 0
+        return self.mgr.LE(self.mgr.Plus(self.t(i - 1), self.mgr.Real(self.problem.epsilon)), self.t(i))
