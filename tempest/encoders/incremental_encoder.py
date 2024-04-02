@@ -37,7 +37,7 @@ class IncrementalEncoder(BaseEncoder):
                 l.append(
                     self.mgr.Implies(self.a(action, w), self.mgr.LE(rhs, self.t_last()))
                 )
-                formula = self.encode_condition_or_goal(action, it, c, i, w)
+                formula = self.encode_condition_or_goal(action, it, c, i, w, None)
                 l.append(
                     self.mgr.Implies(
                         self.chain_var(action, ev, i, w),
@@ -121,7 +121,7 @@ class IncrementalEncoder(BaseEncoder):
                 temp_res.append(tf)
 
         # Frame axiom
-        res.append(self.encode_frame_axiom(i))
+        res.append(self.encode_frame_axiom(i, None))
 
         # Non Self-Overlapping
         if not self.problem.self_overlapping:
@@ -142,8 +142,8 @@ class IncrementalEncoder(BaseEncoder):
             if it.lower == it.upper and it.lower.is_from_end() and it.lower.delay == 0:
                 temp_res.append(self.to_smt(g, i, 0))
             else:
-                res.append(self.encode_condition_or_goal(None, it, g, i, 0))
-                res.append(self.mgr.LE(self.encode_problem_tp(it.upper), self.t_last()))
+                res.append(self.encode_condition_or_goal(None, it, g, i, 0, None))
+                res.append(self.mgr.LE(self.encode_problem_tp(it.upper, None), self.t_last()))
 
         # Goals
         temp_res.append(
