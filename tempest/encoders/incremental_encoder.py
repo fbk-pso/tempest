@@ -54,7 +54,7 @@ class IncrementalEncoder(BaseEncoder):
                         self.chain_var(action, ev, i + 1, w), self.mgr.Bool(False)
                     )
                 )
-                formula = self.encode_effects(action, t, le, i, w, i)
+                formula = self.encode_effects(action, t, le, i, w, None)
                 l.append(
                     self.mgr.Implies(
                         self.chain_var(action, ev, i, w),
@@ -97,7 +97,7 @@ class IncrementalEncoder(BaseEncoder):
         for t, le in self.problem.timed_effects.items():
             assert t.is_from_start()
             ev = (t, tuple(le))
-            formula = self.encode_effects(None, t, le, i, 0)
+            formula = self.encode_effects(None, t, le, i, 0, None)
             res.append(
                 self.mgr.Implies(
                     self.chain_var(None, ev, i, 0),

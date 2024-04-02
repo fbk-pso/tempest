@@ -1,3 +1,4 @@
+from fractions import Fraction
 from time import time
 import pysmt
 import warnings
@@ -143,6 +144,22 @@ class TempestEngine(_BaseEngine):
                         plan,
                         self.name,
                     )
+                    ## debug
+                    # print("h = ", h)
+                    # for i in range(h+1):
+                    #     if i != h:
+                    #         t = smt.get_py_value(encoder.t(i))
+                    #         print(encoder.t(i), "=", t)
+                    #     for a in encoder.problem.actions:
+                    #         if smt.get_py_value(encoder.a(a, i)):
+                    #             print(encoder.a(a, i))
+                    #             d = (
+                    #                 smt.get_py_value(encoder.dur(a, i))
+                    #                 if isinstance(a, up.model.DurativeAction)
+                    #                 else None
+                    #             )
+
+                    ## end debug
                     if isinstance(plan, TimeTriggeredPlan):
                         return correct_plan_generation_result(res, problem, None)
                     else:
@@ -179,11 +196,17 @@ class TempestOptimalEngine(_BaseEngine):
 
     @staticmethod
     def supported_kind() -> ProblemKind:
-        return _BaseEngine._base_kind()
+        supported_kind = _BaseEngine._base_kind()
+        supported_kind.set_quality_metrics("MAKESPAN")
+        supported_kind.set_quality_metrics("ACTIONS_COST")
+        supported_kind.set_actions_cost_kind("STATIC_FLUENTS_IN_ACTIONS_COST")
+        supported_kind.set_actions_cost_kind("INT_NUMBERS_IN_ACTIONS_COST")
+        supported_kind.set_actions_cost_kind("REAL_NUMBERS_IN_ACTIONS_COST")
+        return supported_kind
 
     @staticmethod
     def supports(problem_kind: "up.model.ProblemKind") -> bool:
-        return problem_kind <= TempestEngine.supported_kind()
+        return problem_kind <= TempestOptimalEngine.supported_kind()
 
     @staticmethod
     def satisfies(optimality_guarantee: "up.engines.OptimalityGuarantee") -> bool:
@@ -203,10 +226,10 @@ class TempestOptimalEngine(_BaseEngine):
         assert isinstance(problem, up.model.Problem)
         if heuristic is not None:
             warnings.warn("TemPEST does not support custom heuristics.", UserWarning)
+        pysmt_env = pysmt.environment.Environment()
 
         from pysmt.shortcuts import Optimizer
 
-        pysmt_env = pysmt.environment.Environment()
 
         modify_horizon = lambda x: x
         if self.incremental:
@@ -216,7 +239,6 @@ class TempestOptimalEngine(_BaseEngine):
         else:
             encoder = MonolithicEncoder(problem, pysmt_env=pysmt_env, optimal=True)
 
-        # encoder = MonolithicEncoder(problem, pysmt_env=pysmt_env, optimal=False) # TODO remove, only for debugging
         start_time = time()
         is_in_timeout: bool = False
 
@@ -225,7 +247,8 @@ class TempestOptimalEngine(_BaseEngine):
             if step_zero is not None:
                 omt.add_assertion(step_zero)
             h = 2
-            #self.horizon = 6 # TODO remove
+            if problem.epsilon is None:
+                problem.epsilon = Fraction(1, 100)
             while self.horizon is None or h <= self.horizon:
                 formula, assumptions = encoder.encode_step(modify_horizon(h))
                 if formula is not None:
@@ -239,18 +262,19 @@ class TempestOptimalEngine(_BaseEngine):
                         omt.add_assertion(ec)
                 optimization_result = omt.optimize(minimization_goal)
                 ## debug
-                for i in range(h+1):
-                    if i != h:
-                        t = omt.get_py_value(encoder.t(i))
-                        print(encoder.t(i), "=", t)
-                    for a in encoder.problem.actions:
-                        if omt.get_py_value(encoder.a(a, i)):
-                            print(encoder.a(a, i))
-                            d = (
-                                omt.get_py_value(encoder.dur(a, i))
-                                if isinstance(a, up.model.DurativeAction)
-                                else None
-                            )
+                # print("h = ", h)
+                # for i in range(h+1):
+                #     if i != h:
+                #         t = omt.get_py_value(encoder.t(i))
+                #         print(encoder.t(i), "=", t)
+                #     for a in encoder.problem.actions:
+                #         if omt.get_py_value(encoder.a(a, i)):
+                #             print(encoder.a(a, i))
+                #             d = (
+                #                 omt.get_py_value(encoder.dur(a, i))
+                #                 if isinstance(a, up.model.DurativeAction)
+                #                 else None
+                #             )
 
                 ## end debug
                 if optimization_result is not None:
@@ -263,7 +287,7 @@ class TempestOptimalEngine(_BaseEngine):
                         if output_stream is not None:
                             output_stream.write(f"Makespan with bound {h}: {makespan}. Elapsed_time: {elapsed_time:.3f} seconds\n")
 
-                        print(f"Makespan with bound {h}: {makespan}. Elapsed_time: {elapsed_time:.3f} seconds\n")
+                        # print(f"Makespan with bound {h}: {makespan}. Elapsed_time: {elapsed_time:.3f} seconds\n")
                         h += 1
                         if timeout is not None and elapsed_time > timeout:
                             is_in_timeout = True
@@ -271,8 +295,9 @@ class TempestOptimalEngine(_BaseEngine):
                     else:
                         plan = encoder.extract_plan(model, h)
                         assert plan is not None
+                        status = PlanGenerationResultStatus.SOLVED_OPTIMALLY if problem.quality_metrics  else PlanGenerationResultStatus.SOLVED_SATISFICING
                         res = PlanGenerationResult(
-                            PlanGenerationResultStatus.SOLVED_OPTIMALLY,
+                            status,
                             plan,
                             self.name,
                         )

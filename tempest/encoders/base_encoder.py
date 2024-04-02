@@ -21,10 +21,12 @@ Event = Tuple[Optional[Action], Timing, FrozenSet[FNode], FrozenSet[Effect]]
 
 
 class BaseEncoder(ABC):
-    def __init__(self, problem, pysmt_env=None, optimal: bool = False):
+    def __init__(self, problem, pysmt_env, optimal: bool = False):
         self.problem = problem
         self.em = self.problem.environment.expression_manager
-        self.pysmt_env = pysmt_env if pysmt_env else pysmt.shortcuts.get_env()
+        assert pysmt_env is not None
+        #self.pysmt_env = pysmt_env if pysmt_env else pysmt.shortcuts.get_env()
+        self.pysmt_env = pysmt_env
         self.mgr = self.pysmt_env.formula_manager
         self.optimal = optimal
         self.converters = {}
@@ -115,7 +117,7 @@ class BaseEncoder(ABC):
 
     def t(self, i):
         if i == 0:
-            return self.mgr.Real(0)
+            return self.mgr.Real(-1)
         return self.symenc.t(i)
 
     def t_last(self):
@@ -215,17 +217,27 @@ class BaseEncoder(ABC):
             assert self.optimal
             fve = self.problem.environment.free_vars_extractor
             last_concrete_step_time = self.t(h-1)
-            start_condition_after_last_concrete_step = self.mgr.LT(last_concrete_step_time, smt_tp_1)
-            condition_last_concrete_step = self.to_smt(c, h-1, w, scope=action)
-            condition_abstract_step = self.mgr.Or((self.fluent_mod(exp.fluent(), h) for exp in fve.get(c)))
+            if last_concrete_step_time != smt_tp_1:
 
-            extra_formula = self.mgr.Implies(start_condition_after_last_concrete_step, self.mgr.Or(condition_last_concrete_step, condition_abstract_step))
-            # print(c, action)
-            # print(condition_abstract_step.serialize())
-            # print(extra_formula.serialize())
-            print(f"base formula: {formula.serialize()}")
-            print(f"extra formula: {extra_formula.serialize()}")
-            formula = self.mgr.And(formula, extra_formula)
+                start_condition_after_last_concrete_step = self.mgr.LT(last_concrete_step_time, smt_tp_1)
+                condition_last_concrete_step = self.to_smt(c, h-1, w, scope=action)
+                condition_abstract_step = self.mgr.Or((self.fluent_mod(exp.fluent(), h) for exp in fve.get(c)))
+
+                extra_formula = self.mgr.Implies(start_condition_after_last_concrete_step, self.mgr.Or(condition_last_concrete_step, condition_abstract_step))
+                # if str(c) == "is_connected(l_from, l_to)":
+                #     print("---------------------------")
+                #     print(c, action.name)
+
+                #     print(f"start_condition_after_last_concrete_step: {start_condition_after_last_concrete_step.serialize()}")
+
+                #     print(f"condition_last_concrete_step: {condition_last_concrete_step.serialize()}")
+
+                #     print(f"condition_abstract_step: {condition_abstract_step.serialize()}")
+                # print(condition_abstract_step.serialize())
+                # print(extra_formula.serialize())
+                # print(f"base formula: {formula.serialize()}")
+                # print(f"extra formula: {extra_formula.serialize()}")
+                formula = self.mgr.And(formula, extra_formula)
 
         # print(formula.serialize())
         return formula
@@ -538,9 +550,12 @@ class BaseEncoder(ABC):
         return self.mgr.And(res)
 
     def encode_increasing_time(self, i):
+        # if i == 1:
+        #     # t(0) <= t(1)
+        #     return self.mgr.LE(self.t(i - 1), self.t(i))
         if i == 1:
-            # t(0) <= t(1)
-            return self.mgr.LE(self.t(i - 1), self.t(i))
+            # First valid step must be >= 0
+            return self.mgr.LE(self.mgr.Real(0), self.t(i))
         if self.problem.epsilon is None:
             return self.mgr.LT(self.t(i - 1), self.t(i))
         assert self.problem.epsilon > 0
