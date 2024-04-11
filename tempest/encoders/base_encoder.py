@@ -6,7 +6,7 @@ import pysmt
 
 import unified_planning as up
 from unified_planning.plans import SequentialPlan, TimeTriggeredPlan
-from unified_planning.model import DurativeAction, FNode, Action, Timing, InstantaneousAction, StartTiming, GlobalEndTiming, Effect
+from unified_planning.model import DurativeAction, FNode, Action, Timing, InstantaneousAction, StartTiming, GlobalEndTiming, Effect, Fluent
 from unified_planning.model.fluent import get_all_fluent_exp
 
 from tempest.converter import SMTConverter
@@ -60,37 +60,6 @@ class BaseEncoder(ABC):
                 self.touchers.setdefault(e.fluent.fluent(), []).append((None, t, e))
 
         self._mutex_couples: Set[FrozenSet[Event]] = self._get_mutex_couples()
-
-    @lru_cache(maxsize=None)
-    def fluent_mod(self, fluent, h):
-        # TODO For now it's implemented at lifted level.
-        # probably, implementing this for a ground fluent is more efficient
-        assert isinstance(fluent, Fluent)
-        res = []
-        fluent_touchers = self.touchers.get(fluent, None)
-        if fluent_touchers is None:
-            return self.mgr.FALSE()
-        for action, timing, _ in fluent_touchers:
-            if action is None:
-                # TODO decomment assert (commented due problem in UP tests), assert timing.is_global()
-                til_in_abstract_step = self.mgr.GT(self.encode_problem_tp(timing, h), self.t(h-1))
-                res.append(til_in_abstract_step)
-            elif timing is None:
-                assert isinstance(action, InstantaneousAction)
-                action_in_abstract_step = self.a(action, h)
-                res.append(action_in_abstract_step)
-            else:
-                assert isinstance(action, DurativeAction)
-                last_concrete_step_time = self.t(h-1)
-                for i in range(1, h+1):
-                    a_i = self.a(action, i)
-                    effect_time = self.encode_tp(action, timing, i)
-                    effect_in_abstract_step = self.mgr.GT(effect_time, last_concrete_step_time)
-                    effect_performed_in_abstract_step = self.mgr.And(a_i, effect_in_abstract_step)
-                    res.append(effect_performed_in_abstract_step)
-        # print(fluent)
-        # print(self.mgr.Or(res))
-        return self.mgr.Or(res)
 
     def converter(self, i, w, scope):
         key = (None, i, w) if scope is None else (scope.name, i, w)
@@ -224,22 +193,8 @@ class BaseEncoder(ABC):
                 condition_abstract_step = self.mgr.Or((self.fluent_mod(exp.fluent(), h) for exp in fve.get(c)))
 
                 extra_formula = self.mgr.Implies(start_condition_after_last_concrete_step, self.mgr.Or(condition_last_concrete_step, condition_abstract_step))
-                # if str(c) == "is_connected(l_from, l_to)":
-                #     print("---------------------------")
-                #     print(c, action.name)
-
-                #     print(f"start_condition_after_last_concrete_step: {start_condition_after_last_concrete_step.serialize()}")
-
-                #     print(f"condition_last_concrete_step: {condition_last_concrete_step.serialize()}")
-
-                #     print(f"condition_abstract_step: {condition_abstract_step.serialize()}")
-                # print(condition_abstract_step.serialize())
-                # print(extra_formula.serialize())
-                # print(f"base formula: {formula.serialize()}")
-                # print(f"extra formula: {extra_formula.serialize()}")
                 formula = self.mgr.And(formula, extra_formula)
 
-        # print(formula.serialize())
         return formula
 
     def encode_action_duration(self, action, i):
@@ -270,23 +225,6 @@ class BaseEncoder(ABC):
             l.append(self.encode_effect(action, e, i, i))
 
         return self.mgr.Implies(smt_a, self.mgr.And(l))
-
-    def encode_optimal_instantaneous_action(self, action, i, h):
-        assert self.optimal
-        if i < h:
-            return self.encode_instantaneous_action(action, i)
-        else:
-            assert i == h
-            fve = self.problem.environment.free_vars_extractor
-            l = []
-            a_h = self.a(action, h)
-
-            # Encode preconditions
-            for p in action.preconditions:
-                condition_concrete_last_step = self.to_smt(p, h - 1, h, scope=action)
-                condition_abstract_step = self.mgr.Or((self.fluent_mod(exp.fluent(), h) for exp in fve.get(p)))
-                l.append(self.mgr.Or(condition_concrete_last_step, condition_abstract_step))
-            return self.mgr.Implies(a_h, self.mgr.And(l))
 
     def encode_frame_axiom(self, i, h):
         res = []
@@ -560,3 +498,46 @@ class BaseEncoder(ABC):
             return self.mgr.LT(self.t(i - 1), self.t(i))
         assert self.problem.epsilon > 0
         return self.mgr.LE(self.mgr.Plus(self.t(i - 1), self.mgr.Real(self.problem.epsilon)), self.t(i))
+
+    @lru_cache(maxsize=None)
+    def fluent_mod(self, fluent, h):
+        # TODO For now it's implemented at lifted level.
+        # probably, implementing this for a ground fluent is more efficient
+        assert isinstance(fluent, Fluent)
+        res = []
+        fluent_touchers = self.touchers.get(fluent, None)
+        if fluent_touchers is None:
+            return self.mgr.FALSE()
+        for action, timing, _ in fluent_touchers:
+            if action is None:
+                # TODO decomment assert (commented due problem in UP tests), assert timing.is_global()
+                til_in_abstract_step = self.mgr.GT(self.encode_problem_tp(timing, h), self.t(h-1))
+                res.append(til_in_abstract_step)
+            elif timing is None:
+                assert isinstance(action, InstantaneousAction)
+                action_in_abstract_step = self.a(action, h)
+                res.append(action_in_abstract_step)
+            else:
+                assert isinstance(action, DurativeAction)
+                last_concrete_step_time = self.t(h-1)
+                for i in range(1, h+1):
+                    a_i = self.a(action, i)
+                    effect_time = self.encode_tp(action, timing, i)
+                    effect_in_abstract_step = self.mgr.GT(effect_time, last_concrete_step_time)
+                    effect_performed_in_abstract_step = self.mgr.And(a_i, effect_in_abstract_step)
+                    res.append(effect_performed_in_abstract_step)
+
+        return self.mgr.Or(res)
+
+    def encode_abstract_instantaneous_action(self, action, h):
+        assert self.optimal
+        fve = self.problem.environment.free_vars_extractor
+        l = []
+        a_h = self.a(action, h)
+
+        # Encode preconditions
+        for p in action.preconditions:
+            condition_concrete_last_step = self.to_smt(p, h - 1, h, scope=action)
+            condition_abstract_step = self.mgr.Or((self.fluent_mod(exp.fluent(), h) for exp in fve.get(p)))
+            l.append(self.mgr.Or(condition_concrete_last_step, condition_abstract_step))
+        return self.mgr.Implies(a_h, self.mgr.And(l))

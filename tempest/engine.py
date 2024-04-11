@@ -13,7 +13,6 @@ from unified_planning.engines import (
 from unified_planning.engines.results import correct_plan_generation_result
 from unified_planning.plans import TimeTriggeredPlan
 from typing import IO, Callable, Optional
-from pysmt.shortcuts import Solver
 from tempest.encoders import MonolithicEncoder, IncrementalEncoder
 
 
@@ -42,7 +41,7 @@ class _BaseEngine(up.engines.Engine, up.engines.mixins.OneshotPlannerMixin):
         base_kind = ProblemKind()
         base_kind.set_problem_class("ACTION_BASED")
         base_kind.set_problem_type("SIMPLE_NUMERIC_PLANNING")
-        base_kind.set_problem_type("GENERAL_NUMERIC_PLANNING")
+        # base_kind.set_problem_type("GENERAL_NUMERIC_PLANNING")
         base_kind.set_time("CONTINUOUS_TIME")
         base_kind.set_time("INTERMEDIATE_CONDITIONS_AND_EFFECTS")
         base_kind.set_time("TIMED_EFFECTS")
@@ -128,7 +127,7 @@ class TempestEngine(_BaseEngine):
         start_time = time()
         is_in_timeout: bool = False
 
-        with Solver(logic="QF_NRA") as smt:
+        with pysmt_env.factory.Solver(logic="QF_LRA") as smt:
             step_zero = encoder.encode_step_zero()
             if step_zero is not None:
                 smt.add_assertion(step_zero)
@@ -144,22 +143,6 @@ class TempestEngine(_BaseEngine):
                         plan,
                         self.name,
                     )
-                    ## debug
-                    # print("h = ", h)
-                    # for i in range(h+1):
-                    #     if i != h:
-                    #         t = smt.get_py_value(encoder.t(i))
-                    #         print(encoder.t(i), "=", t)
-                    #     for a in encoder.problem.actions:
-                    #         if smt.get_py_value(encoder.a(a, i)):
-                    #             print(encoder.a(a, i))
-                    #             d = (
-                    #                 smt.get_py_value(encoder.dur(a, i))
-                    #                 if isinstance(a, up.model.DurativeAction)
-                    #                 else None
-                    #             )
-
-                    ## end debug
                     if isinstance(plan, TimeTriggeredPlan):
                         return correct_plan_generation_result(res, problem, None)
                     else:
@@ -197,11 +180,8 @@ class TempestOptimalEngine(_BaseEngine):
     @staticmethod
     def supported_kind() -> ProblemKind:
         supported_kind = _BaseEngine._base_kind()
+        supported_kind.unset_problem_type("GENERAL_NUMERIC_PLANNING")
         supported_kind.set_quality_metrics("MAKESPAN")
-        supported_kind.set_quality_metrics("ACTIONS_COST")
-        supported_kind.set_actions_cost_kind("STATIC_FLUENTS_IN_ACTIONS_COST")
-        supported_kind.set_actions_cost_kind("INT_NUMBERS_IN_ACTIONS_COST")
-        supported_kind.set_actions_cost_kind("REAL_NUMBERS_IN_ACTIONS_COST")
         return supported_kind
 
     @staticmethod
@@ -228,9 +208,6 @@ class TempestOptimalEngine(_BaseEngine):
             warnings.warn("TemPEST does not support custom heuristics.", UserWarning)
         pysmt_env = pysmt.environment.Environment()
 
-        from pysmt.shortcuts import Optimizer
-
-
         modify_horizon = lambda x: x
         if self.incremental:
             raise NotImplementedError()
@@ -242,7 +219,7 @@ class TempestOptimalEngine(_BaseEngine):
         start_time = time()
         is_in_timeout: bool = False
 
-        with Optimizer(logic="QF_LRA") as omt:
+        with pysmt_env.factory.Optimizer(logic="QF_LRA") as omt:
             step_zero = encoder.encode_step_zero()
             if step_zero is not None:
                 omt.add_assertion(step_zero)
@@ -261,33 +238,13 @@ class TempestOptimalEngine(_BaseEngine):
                     for ec in extra_constraints:
                         omt.add_assertion(ec)
                 optimization_result = omt.optimize(minimization_goal)
-                ## debug
-                # print("h = ", h)
-                # for i in range(h+1):
-                #     if i != h:
-                #         t = omt.get_py_value(encoder.t(i))
-                #         print(encoder.t(i), "=", t)
-                #     for a in encoder.problem.actions:
-                #         if omt.get_py_value(encoder.a(a, i)):
-                #             print(encoder.a(a, i))
-                #             d = (
-                #                 omt.get_py_value(encoder.dur(a, i))
-                #                 if isinstance(a, up.model.DurativeAction)
-                #                 else None
-                #             )
-
-                ## end debug
                 if optimization_result is not None:
                     model, makespan = optimization_result
-                    # print(encoder._uses_abstact_step(h))
                     uses_abstract_step = model.get_value(encoder._uses_abstact_step(h)).is_true()
-                    # print(model.get_value(encoder._uses_abstact_step(h)))
                     if uses_abstract_step:
                         elapsed_time = time() - start_time
                         if output_stream is not None:
                             output_stream.write(f"Makespan with bound {h}: {makespan}. Elapsed_time: {elapsed_time:.3f} seconds\n")
-
-                        # print(f"Makespan with bound {h}: {makespan}. Elapsed_time: {elapsed_time:.3f} seconds\n")
                         h += 1
                         if timeout is not None and elapsed_time > timeout:
                             is_in_timeout = True
@@ -307,12 +264,7 @@ class TempestOptimalEngine(_BaseEngine):
                             return res
 
                 else:
-                    print("h =", h)
-                    print("UNSAT")
-                    # print(formula)
                     assert formula is None
-                    # for a in assumptions:
-                    #     print(a.serialize())
                     break
                 omt.pop()
 
