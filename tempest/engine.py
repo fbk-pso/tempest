@@ -41,7 +41,6 @@ class _BaseEngine(up.engines.Engine, up.engines.mixins.OneshotPlannerMixin):
         base_kind = ProblemKind()
         base_kind.set_problem_class("ACTION_BASED")
         base_kind.set_problem_type("SIMPLE_NUMERIC_PLANNING")
-        # base_kind.set_problem_type("GENERAL_NUMERIC_PLANNING")
         base_kind.set_time("CONTINUOUS_TIME")
         base_kind.set_time("INTERMEDIATE_CONDITIONS_AND_EFFECTS")
         base_kind.set_time("TIMED_EFFECTS")
@@ -168,6 +167,7 @@ class TempestNonIncremental(TempestEngine):
     def __init__(self, horizon=None):
         super().__init__(False, horizon)
 
+
 class TempestOptimalEngine(_BaseEngine):
     """Implementation of the TemPEST Optimal Engine."""
     def __init__(self, incremental=False, horizon=None):
@@ -180,7 +180,6 @@ class TempestOptimalEngine(_BaseEngine):
     @staticmethod
     def supported_kind() -> ProblemKind:
         supported_kind = _BaseEngine._base_kind()
-        supported_kind.unset_problem_type("GENERAL_NUMERIC_PLANNING")
         supported_kind.set_quality_metrics("MAKESPAN")
         return supported_kind
 
@@ -211,8 +210,6 @@ class TempestOptimalEngine(_BaseEngine):
         modify_horizon = lambda x: x
         if self.incremental:
             raise NotImplementedError()
-            encoder = IncrementalEncoder(problem, pysmt_env=pysmt_env)
-            modify_horizon = lambda x: x-1
         else:
             encoder = MonolithicEncoder(problem, pysmt_env=pysmt_env, optimal=True)
 

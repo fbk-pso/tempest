@@ -20,7 +20,7 @@ class MonolithicEncoder(BaseEncoder):
         for it, lc in action.conditions.items():
             c = self.em.And(lc)
             for k in range(i, h):
-                l.append(self.encode_condition_or_goal(action, it, c, k, i, h=h, optimal=self.optimal))
+                l.append(self.encode_condition_or_goal(action, it, c, k, i, h=h))
 
         # Action effects
         for t, le in action.effects.items():
@@ -48,7 +48,7 @@ class MonolithicEncoder(BaseEncoder):
                 if it.lower.is_from_start() and it.lower.delay == 0:
                     res.append(self.to_smt(g, 0))
                 for i in range(1, h):
-                    res.append(self.encode_condition_or_goal(None, it, g, i, 0, h, optimal=optimal))
+                    res.append(self.encode_condition_or_goal(None, it, g, i, 0, h))
             if not optimal:
                 res.append(self.mgr.LE(self.encode_problem_tp(it.upper, h), self.t(h - 1)))
         return self.mgr.And(res)
@@ -118,7 +118,8 @@ class MonolithicEncoder(BaseEncoder):
         metric = self.problem.quality_metrics[-1] if self.problem.quality_metrics else None
         if metric is None or metric.is_minimize_makespan():
             return MinimizationGoal(self.t(h-1)), None
-        assert metric.is_minimize_action_costs(), f"Metric {metric} not supported"
+        else:
+            raise NotImplementedError(f"Metric {metric} not supported")
 
     def encode_density_constraints(self, h: int):
         assert self.optimal
@@ -166,12 +167,3 @@ class MonolithicEncoder(BaseEncoder):
             res.append(self.mgr.Not(a_h))
 
         return self.mgr.Not(self.mgr.And(res))
-
-    @lru_cache(maxsize=None)
-    def _get_action_costs(self):
-        simplifier = QuantifierSimplifier(self.problem.environment, self.problem)
-
-        ass = self.problem.initial_values
-
-
-#TODO in optimal case, t_h_a have to be added.

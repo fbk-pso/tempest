@@ -25,7 +25,6 @@ class BaseEncoder(ABC):
         self.problem = problem
         self.em = self.problem.environment.expression_manager
         assert pysmt_env is not None
-        #self.pysmt_env = pysmt_env if pysmt_env else pysmt.shortcuts.get_env()
         self.pysmt_env = pysmt_env
         self.mgr = self.pysmt_env.formula_manager
         self.optimal = optimal
@@ -157,7 +156,7 @@ class BaseEncoder(ABC):
             effect_formula = self.mgr.Or(effect_formula, effect_in_abstract_step)
         return effect_formula
 
-    def encode_condition_or_goal(self, action, it, c, i, w, h, optimal: bool = False):
+    def encode_condition_or_goal(self, action, it, c, i, w, h):
         if action is None:
             smt_tp_1 = self.encode_problem_tp(it.lower, h)
             smt_tp_2 = self.encode_problem_tp(it.upper, h)
@@ -182,8 +181,7 @@ class BaseEncoder(ABC):
             formula_2 = self.mgr.Implies(cond_2, self.to_smt(c, i, w, scope=action))
             formula = self.mgr.And(formula_1, formula_2)
 
-        if optimal:
-            assert self.optimal
+        if self.optimal:
             fve = self.problem.environment.free_vars_extractor
             last_concrete_step_time = self.t(h-1)
             if last_concrete_step_time != smt_tp_1:
@@ -488,9 +486,6 @@ class BaseEncoder(ABC):
         return self.mgr.And(res)
 
     def encode_increasing_time(self, i):
-        # if i == 1:
-        #     # t(0) <= t(1)
-        #     return self.mgr.LE(self.t(i - 1), self.t(i))
         if i == 1:
             # First valid step must be >= 0
             return self.mgr.LE(self.mgr.Real(0), self.t(i))
