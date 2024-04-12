@@ -41,6 +41,7 @@ jobs:
       - name: test
         run: |
           PWD=$(pwd)
+          ls
           export PYTHONPATH=$PWD/benckmarks:$PYTHONPATH
           echo "PYTHONPATH=$PYTHONPATH"
           echo "PYTHONPATH=$PYTHONPATH" >> $GITHUB_ENV
