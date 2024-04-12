@@ -60,10 +60,10 @@ jobs:
           echo -e "[engine tempest]\nmodule_name: tempest.engine\nclass_name: TempestEngine\n[engine tempest-ni]\nmodule_name: tempest.engine\nclass_name: TempestNonIncremental\n[engine tempest-opt]\nmodule_name: tempest.engine\nclass_name: TempestOptimalEngine" > .up.ini
 
       - name: Run the report
-        run: python3 unified-planning/up_test_cases/report.py tempest -m oneshot -t 3
+        run: python3 unified-planning/up_test_cases/report.py tempest -m oneshot -t 3 -e test_cases
 
       - name: Run the report on non incremental
-        run: python3 unified-planning/up_test_cases/report.py tempest-ni -m oneshot -t 3
+        run: python3 unified-planning/up_test_cases/report.py tempest-ni -m oneshot -t 3 -e test_cases
 
       - name: Run the report on optimal non incremental
-        run: python3 unified-planning/up_test_cases/report.py tempest-opt -m oneshot -t 3
+        run: python3 unified-planning/up_test_cases/report.py tempest-opt -m oneshot -t 3 -e test_cases
