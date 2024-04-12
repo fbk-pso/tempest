@@ -20,7 +20,7 @@ class MonolithicEncoder(BaseEncoder):
         for it, lc in action.conditions.items():
             c = self.em.And(lc)
             for k in range(i, h):
-                l.append(self.encode_condition_or_goal(action, it, c, k, i, h=h))
+                l.append(self.encode_condition_or_goal(action, it, c, k, i, h))
 
         # Action effects
         for t, le in action.effects.items():

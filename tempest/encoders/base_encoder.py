@@ -164,18 +164,26 @@ class BaseEncoder(ABC):
             smt_tp_1 = self.encode_tp(action, it.lower, w)
             smt_tp_2 = self.encode_tp(action, it.upper, w)
 
-        if it.lower == it.upper: # TODO chech if here should check that is not open
+
+        non_empty_interval_operand = self.mgr.GE
+        if it.is_left_open() or it.is_right_open():
+            non_empty_interval_operand = self.mgr.GT
+
+        if it.lower == it.upper and (it.is_left_open() or it.is_right_open()):
+            # Empty interval condition
+            return self.mgr.TRUE()
+        elif it.lower == it.upper:
             smt_tp = smt_tp_1
             cond = self.mgr.And(self.mgr.LT(self.t(i - 1), smt_tp), self.mgr.GE(self.t(i), smt_tp))
             formula = self.mgr.Implies(cond, self.to_smt(c, i - 1, w, scope=action))
         elif it.is_left_open():  # open and left open are the same
-            cond_1 = self.mgr.And(self.mgr.LE(self.t(i - 1), smt_tp_1), self.mgr.GT(self.t(i), smt_tp_1))
+            cond_1 = self.mgr.And(self.mgr.LE(self.t(i - 1), smt_tp_1), self.mgr.GT(self.t(i), smt_tp_1), non_empty_interval_operand(smt_tp_2, smt_tp_1))
             formula_1 = self.mgr.Implies(cond_1, self.to_smt(c, i - 1, w, scope=action))
             cond_2 = self.mgr.And(self.mgr.LT(self.t(i), smt_tp_2), self.mgr.GT(self.t(i), smt_tp_1))
             formula_2 = self.mgr.Implies(cond_2, self.to_smt(c, i, w, scope=action))
             formula = self.mgr.And(formula_1, formula_2)
         else:  # closed and right open are the same
-            cond_1 = self.mgr.And(self.mgr.LT(self.t(i - 1), smt_tp_1), self.mgr.GE(self.t(i), smt_tp_1))
+            cond_1 = self.mgr.And(self.mgr.LT(self.t(i - 1), smt_tp_1), self.mgr.GE(self.t(i), smt_tp_1), non_empty_interval_operand(smt_tp_2, smt_tp_1))
             formula_1 = self.mgr.Implies(cond_1, self.to_smt(c, i - 1, w, scope=action))
             cond_2 = self.mgr.And(self.mgr.LT(self.t(i), smt_tp_2), self.mgr.GE(self.t(i), smt_tp_1))
             formula_2 = self.mgr.Implies(cond_2, self.to_smt(c, i, w, scope=action))
