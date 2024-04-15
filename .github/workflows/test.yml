@@ -4,7 +4,7 @@ on:
   push
 
 env:
-  unified_planning_commit: "97674573a01b85273de847ba9976ab245ce0edb2"
+  unified_planning_commit: "0d2bb6a51a782fb688bd4f62877977e911a91f45"
 
 jobs:
   unified-planning-report:
@@ -61,4 +61,4 @@ jobs:
           echo -e "[engine tempest]\nmodule_name: tempest.engine\nclass_name: TempestEngine\n[engine tempest-ni]\nmodule_name: tempest.engine\nclass_name: TempestNonIncremental\n[engine tempest-opt]\nmodule_name: tempest.engine\nclass_name: TempestOptimalEngine" > .up.ini
 
       - name: Run the report
-        run: python3 unified-planning/up_test_cases/report.py tempest tempest-ni tempest-opt -m oneshot -t 3 -e test_cases
+        run: python3 unified-planning/up_test_cases/report.py tempest tempest-ni tempest-opt -m oneshot -t 3 -e test_cases -b logistics
