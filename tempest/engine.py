@@ -1,3 +1,4 @@
+from fractions import Fraction
 from time import time
 import pysmt
 import warnings
@@ -12,7 +13,6 @@ from unified_planning.engines import (
 from unified_planning.engines.results import correct_plan_generation_result
 from unified_planning.plans import TimeTriggeredPlan
 from typing import IO, Callable, Optional
-from pysmt.shortcuts import Solver
 from tempest.encoders import MonolithicEncoder, IncrementalEncoder
 
 
@@ -41,7 +41,6 @@ class _BaseEngine(up.engines.Engine, up.engines.mixins.OneshotPlannerMixin):
         base_kind = ProblemKind()
         base_kind.set_problem_class("ACTION_BASED")
         base_kind.set_problem_type("SIMPLE_NUMERIC_PLANNING")
-        base_kind.set_problem_type("GENERAL_NUMERIC_PLANNING")
         base_kind.set_time("CONTINUOUS_TIME")
         base_kind.set_time("INTERMEDIATE_CONDITIONS_AND_EFFECTS")
         base_kind.set_time("TIMED_EFFECTS")
@@ -127,7 +126,7 @@ class TempestEngine(_BaseEngine):
         start_time = time()
         is_in_timeout: bool = False
 
-        with Solver(logic="QF_NRA") as smt:
+        with pysmt_env.factory.Solver(logic="QF_LRA") as smt:
             step_zero = encoder.encode_step_zero()
             if step_zero is not None:
                 smt.add_assertion(step_zero)
@@ -156,6 +155,7 @@ class TempestEngine(_BaseEngine):
                         is_in_timeout = True
                         break
 
+
         status = PlanGenerationResultStatus.TIMEOUT if is_in_timeout else PlanGenerationResultStatus.UNSOLVABLE_INCOMPLETELY
 
         return PlanGenerationResult(
@@ -166,3 +166,107 @@ class TempestEngine(_BaseEngine):
 class TempestNonIncremental(TempestEngine):
     def __init__(self, horizon=None):
         super().__init__(False, horizon)
+
+
+class TempestOptimalEngine(_BaseEngine):
+    """Implementation of the TemPEST Optimal Engine."""
+    def __init__(self, incremental=False, horizon=None):
+        super().__init__(incremental, horizon)
+
+    @property
+    def name(self) -> str:
+        return "TemPEST Optimal"
+
+    @staticmethod
+    def supported_kind() -> ProblemKind:
+        supported_kind = _BaseEngine._base_kind()
+        supported_kind.set_quality_metrics("MAKESPAN")
+        return supported_kind
+
+    @staticmethod
+    def supports(problem_kind: "up.model.ProblemKind") -> bool:
+        return problem_kind <= TempestOptimalEngine.supported_kind()
+
+    @staticmethod
+    def satisfies(optimality_guarantee: "up.engines.OptimalityGuarantee") -> bool:
+        return True
+
+    @staticmethod
+    def get_credits(**kwargs) -> Optional["up.engines.Credits"]:
+        return credits
+
+    def _solve(
+        self,
+        problem: "up.model.AbstractProblem",
+        heuristic: Optional[Callable[["up.model.state.State"], Optional[float]]] = None,
+        timeout: Optional[float] = None,
+        output_stream: Optional[IO[str]] = None,
+    ) -> "up.engines.results.PlanGenerationResult":
+        assert isinstance(problem, up.model.Problem)
+        if heuristic is not None:
+            warnings.warn("TemPEST does not support custom heuristics.", UserWarning)
+        pysmt_env = pysmt.environment.Environment()
+
+        modify_horizon = lambda x: x
+        if self.incremental:
+            raise NotImplementedError()
+        else:
+            encoder = MonolithicEncoder(problem, pysmt_env=pysmt_env, optimal=True)
+
+        start_time = time()
+        is_in_timeout: bool = False
+
+        with pysmt_env.factory.Optimizer(logic="QF_LRA") as omt:
+            step_zero = encoder.encode_step_zero()
+            if step_zero is not None:
+                omt.add_assertion(step_zero)
+            h = 2
+            if problem.epsilon is None:
+                problem.epsilon = Fraction(1, 100)
+            while self.horizon is None or h <= self.horizon:
+                formula, assumptions = encoder.encode_step(modify_horizon(h))
+                if formula is not None:
+                    omt.add_assertion(formula)
+                omt.push()
+                for a in assumptions:
+                    omt.add_assertion(a)
+                minimization_goal, extra_constraints = encoder.objective_to_minimize(h)
+                if extra_constraints is not None:
+                    for ec in extra_constraints:
+                        omt.add_assertion(ec)
+                optimization_result = omt.optimize(minimization_goal)
+                if optimization_result is not None:
+                    model, makespan = optimization_result
+                    uses_abstract_step = model.get_value(encoder._uses_abstact_step(h)).is_true()
+                    if uses_abstract_step:
+                        elapsed_time = time() - start_time
+                        if output_stream is not None:
+                            output_stream.write(f"Makespan with bound {h}: {makespan}. Elapsed_time: {elapsed_time:.3f} seconds\n")
+                        h += 1
+                        if timeout is not None and elapsed_time > timeout:
+                            is_in_timeout = True
+                            break
+                    else:
+                        plan = encoder.extract_plan(model, h)
+                        assert plan is not None
+                        status = PlanGenerationResultStatus.SOLVED_OPTIMALLY if problem.quality_metrics  else PlanGenerationResultStatus.SOLVED_SATISFICING
+                        res = PlanGenerationResult(
+                            status,
+                            plan,
+                            self.name,
+                        )
+                        if isinstance(plan, TimeTriggeredPlan):
+                            return correct_plan_generation_result(res, problem, None)
+                        else:
+                            return res
+
+                else:
+                    assert formula is None
+                    break
+                omt.pop()
+
+        status = PlanGenerationResultStatus.TIMEOUT if is_in_timeout else PlanGenerationResultStatus.UNSOLVABLE_INCOMPLETELY
+
+        return PlanGenerationResult(
+            status, None, self.name
+        )

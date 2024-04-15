@@ -2,8 +2,9 @@ from functools import lru_cache
 import pysmt
 
 class SymbolEncoder:
-    def __init__(self, objects, pysmt_env=None):
-        self.pysmt_env = pysmt_env if pysmt_env else pysmt.shortcuts.get_env()
+    def __init__(self, objects, pysmt_env):
+        assert pysmt_env is not None
+        self.pysmt_env = pysmt_env
         self.mgr = self.pysmt_env.formula_manager
         self.objects = objects
         self.type_constraints = {}

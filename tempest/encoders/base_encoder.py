@@ -1,11 +1,12 @@
 from itertools import chain
 from typing import Any, FrozenSet, Optional, Set, Tuple
+from functools import lru_cache
 from abc import ABC, abstractmethod
 import pysmt
 
 import unified_planning as up
 from unified_planning.plans import SequentialPlan, TimeTriggeredPlan
-from unified_planning.model import DurativeAction, FNode, Action, Timing, InstantaneousAction, StartTiming, GlobalEndTiming, Effect
+from unified_planning.model import DurativeAction, FNode, Action, Timing, InstantaneousAction, StartTiming, GlobalEndTiming, Effect, Fluent
 from unified_planning.model.fluent import get_all_fluent_exp
 
 from tempest.converter import SMTConverter
@@ -20,11 +21,13 @@ Event = Tuple[Optional[Action], Timing, FrozenSet[FNode], FrozenSet[Effect]]
 
 
 class BaseEncoder(ABC):
-    def __init__(self, problem, pysmt_env=None):
+    def __init__(self, problem, pysmt_env, optimal: bool = False):
         self.problem = problem
         self.em = self.problem.environment.expression_manager
-        self.pysmt_env = pysmt_env if pysmt_env else pysmt.shortcuts.get_env()
+        assert pysmt_env is not None
+        self.pysmt_env = pysmt_env
         self.mgr = self.pysmt_env.formula_manager
+        self.optimal = optimal
         self.converters = {}
 
         self.objects = {}
@@ -82,7 +85,7 @@ class BaseEncoder(ABC):
 
     def t(self, i):
         if i == 0:
-            return self.mgr.Real(0)
+            return self.mgr.Real(-1)
         return self.symenc.t(i)
 
     def t_last(self):
@@ -138,7 +141,7 @@ class BaseEncoder(ABC):
 
         return self.mgr.Implies(smt_c, self.mgr.EqualsOrIff(smt_f, smt_v))
 
-    def encode_effects(self, action, t, le, i, w):
+    def encode_effects(self, action, t, le, i, w, h):
         if action is None:
             assert t.is_from_start()
             smt_tp = self.encode_problem_tp(t, None)
@@ -147,7 +150,11 @@ class BaseEncoder(ABC):
         eff = [self.mgr.Equals(self.t(i), smt_tp)]
         for e in le:
             eff.append(self.encode_effect(action, e, i, w))
-        return self.mgr.And(eff)
+        effect_formula = self.mgr.And(eff)
+        if self.optimal:
+            effect_in_abstract_step = self.mgr.LT(self.t(h-1), smt_tp)
+            effect_formula = self.mgr.Or(effect_formula, effect_in_abstract_step)
+        return effect_formula
 
     def encode_condition_or_goal(self, action, it, c, i, w, h):
         if action is None:
@@ -156,23 +163,66 @@ class BaseEncoder(ABC):
         else:
             smt_tp_1 = self.encode_tp(action, it.lower, w)
             smt_tp_2 = self.encode_tp(action, it.upper, w)
-        if it.lower == it.upper:
+
+        non_empty_interval_operand = self.mgr.GE
+        if it.is_left_open() or it.is_right_open():
+            non_empty_interval_operand = self.mgr.GT
+        if self._is_never_empty_interval(it):
+            # adding True instead of a trivially True expression (e.g. 5 > 3)
+            non_empty_interval_operand = lambda x, y: self.mgr.TRUE()
+
+        if self._is_always_empty_interval(it):
+            return self.mgr.TRUE()
+        elif it.lower == it.upper:
             smt_tp = smt_tp_1
             cond = self.mgr.And(self.mgr.LT(self.t(i - 1), smt_tp), self.mgr.GE(self.t(i), smt_tp))
             formula = self.mgr.Implies(cond, self.to_smt(c, i - 1, w, scope=action))
         elif it.is_left_open():  # open and left open are the same
-            cond_1 = self.mgr.And(self.mgr.LE(self.t(i - 1), smt_tp_1), self.mgr.GT(self.t(i), smt_tp_1))
+            cond_1 = self.mgr.And(self.mgr.LE(self.t(i - 1), smt_tp_1), self.mgr.GT(self.t(i), smt_tp_1), non_empty_interval_operand(smt_tp_2, smt_tp_1))
             formula_1 = self.mgr.Implies(cond_1, self.to_smt(c, i - 1, w, scope=action))
             cond_2 = self.mgr.And(self.mgr.LT(self.t(i), smt_tp_2), self.mgr.GT(self.t(i), smt_tp_1))
             formula_2 = self.mgr.Implies(cond_2, self.to_smt(c, i, w, scope=action))
             formula = self.mgr.And(formula_1, formula_2)
         else:  # closed and right open are the same
-            cond_1 = self.mgr.And(self.mgr.LT(self.t(i - 1), smt_tp_1), self.mgr.GE(self.t(i), smt_tp_1))
+            cond_1 = self.mgr.And(self.mgr.LT(self.t(i - 1), smt_tp_1), self.mgr.GE(self.t(i), smt_tp_1), non_empty_interval_operand(smt_tp_2, smt_tp_1))
             formula_1 = self.mgr.Implies(cond_1, self.to_smt(c, i - 1, w, scope=action))
             cond_2 = self.mgr.And(self.mgr.LT(self.t(i), smt_tp_2), self.mgr.GE(self.t(i), smt_tp_1))
             formula_2 = self.mgr.Implies(cond_2, self.to_smt(c, i, w, scope=action))
             formula = self.mgr.And(formula_1, formula_2)
+
+        if self.optimal:
+            fve = self.problem.environment.free_vars_extractor
+            last_concrete_step_time = self.t(h-1)
+            if last_concrete_step_time != smt_tp_1:
+
+                start_condition_after_last_concrete_step = self.mgr.LT(last_concrete_step_time, smt_tp_1)
+                condition_last_concrete_step = self.to_smt(c, h-1, w, scope=action)
+                condition_abstract_step = self.mgr.Or((self.fluent_mod(exp.fluent(), h) for exp in fve.get(c)))
+
+                extra_formula = self.mgr.Implies(start_condition_after_last_concrete_step, self.mgr.Or(condition_last_concrete_step, condition_abstract_step))
+                formula = self.mgr.And(formula, extra_formula)
+
         return formula
+
+    def _is_always_empty_interval(self, interval) -> bool:
+        lower, upper = interval.lower, interval.upper
+        if lower.is_from_start() != upper.is_from_start():
+            # One is from start and the other from end
+            return False
+        elif interval.is_left_open() or interval.is_right_open():
+            return lower.delay >= upper.delay
+        else:
+            return lower.delay > upper.delay
+
+    def _is_never_empty_interval(self, interval) -> bool:
+        lower, upper = interval.lower, interval.upper
+        if lower.is_from_start() != upper.is_from_start():
+            # One is from start and the other from end
+            return False
+        elif interval.is_left_open() or interval.is_right_open():
+            return lower.delay < upper.delay
+        else:
+            return lower.delay <= upper.delay
 
     def encode_action_duration(self, action, i):
         smt_dur = self.dur(action, i)
@@ -197,7 +247,6 @@ class BaseEncoder(ABC):
         # Encode preconditions
         for p in action.preconditions:
             l.append(self.to_smt(p, i - 1, i, scope=action))
-
         # Encode effects
         for e in action.effects:
             l.append(self.encode_effect(action, e, i, i))
@@ -439,7 +488,10 @@ class BaseEncoder(ABC):
                 return self.encode_problem_tp(timing, h)
 
         for (action_a, timing_a), (action_b, timing_b) in self._mutex_couples:
-            if i == j and action_a == action_b:
+            def is_global_end(timing):
+                return timing.is_global() and timing.is_from_end()
+
+            if (i == j and action_a == action_b) or is_global_end(timing_a) or is_global_end(timing_b):
                 continue
             time_of_a = encode_timing(action_a, timing_a, i)
             time_of_b = encode_timing(action_b, timing_b, j)
@@ -463,7 +515,53 @@ class BaseEncoder(ABC):
         return self.mgr.And(res)
 
     def encode_increasing_time(self, i):
+        if i == 1:
+            # First valid step must be >= 0
+            return self.mgr.LE(self.mgr.Real(0), self.t(i))
         if self.problem.epsilon is None:
             return self.mgr.LT(self.t(i - 1), self.t(i))
         assert self.problem.epsilon > 0
         return self.mgr.LE(self.mgr.Plus(self.t(i - 1), self.mgr.Real(self.problem.epsilon)), self.t(i))
+
+    @lru_cache(maxsize=None)
+    def fluent_mod(self, fluent, h):
+        # TODO For now it's implemented at lifted level.
+        # probably, implementing this for a ground fluent is more efficient
+        assert isinstance(fluent, Fluent)
+        res = []
+        fluent_touchers = self.touchers.get(fluent, None)
+        if fluent_touchers is None:
+            return self.mgr.FALSE()
+        for action, timing, _ in fluent_touchers:
+            if action is None:
+                # TODO decomment assert (commented due problem in UP tests), assert timing.is_global()
+                til_in_abstract_step = self.mgr.GT(self.encode_problem_tp(timing, h), self.t(h-1))
+                res.append(til_in_abstract_step)
+            elif timing is None:
+                assert isinstance(action, InstantaneousAction)
+                action_in_abstract_step = self.a(action, h)
+                res.append(action_in_abstract_step)
+            else:
+                assert isinstance(action, DurativeAction)
+                last_concrete_step_time = self.t(h-1)
+                for i in range(1, h+1):
+                    a_i = self.a(action, i)
+                    effect_time = self.encode_tp(action, timing, i)
+                    effect_in_abstract_step = self.mgr.GT(effect_time, last_concrete_step_time)
+                    effect_performed_in_abstract_step = self.mgr.And(a_i, effect_in_abstract_step)
+                    res.append(effect_performed_in_abstract_step)
+
+        return self.mgr.Or(res)
+
+    def encode_abstract_instantaneous_action(self, action, h):
+        assert self.optimal
+        fve = self.problem.environment.free_vars_extractor
+        l = []
+        a_h = self.a(action, h)
+
+        # Encode preconditions
+        for p in action.preconditions:
+            condition_concrete_last_step = self.to_smt(p, h - 1, h, scope=action)
+            condition_abstract_step = self.mgr.Or((self.fluent_mod(exp.fluent(), h) for exp in fve.get(p)))
+            l.append(self.mgr.Or(condition_concrete_last_step, condition_abstract_step))
+        return self.mgr.Implies(a_h, self.mgr.And(l))

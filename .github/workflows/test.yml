@@ -4,7 +4,7 @@ on:
   push
 
 env:
-  unified_planning_commit: "97674573a01b85273de847ba9976ab245ce0edb2"
+  unified_planning_commit: "a22d4a64dc86bad00bc7d20d263e68cd2902f2d2"
 
 jobs:
   unified-planning-report:
@@ -19,11 +19,30 @@ jobs:
         with:
           python-version: "3.10"
 
+      - name: Checkout pysmt-optimization
+        uses: actions/checkout@v2
+        with:
+          repository: pysmt/pysmt
+          path: pysmt
+          ref: optimization
+
+      - name: Install pysmt
+        run: python3 -m pip install pysmt/
+
       - name: Install tempest
         run: python3 -m pip install .
 
-      - name: Install z3 using pysmt
-        run: pysmt-install --z3 --confirm-agreement
+      - name: Install msat using pysmt
+        run: pysmt-install --msat --confirm-agreement
+
+      - name: Install optimsat using pysmt
+        run: pysmt-install --optimsat --confirm-agreement
+
+      - name: Add the benchmarks folder to the PYTHONPATH
+        run: |
+          PWD=$(pwd)
+          export PYTHONPATH=$PWD/benckmarks:$PYTHONPATH
+          echo "PYTHONPATH=$PYTHONPATH" >> $GITHUB_ENV
 
       - name: Checkout unified-planning
         uses: actions/checkout@v2
@@ -37,10 +56,7 @@ jobs:
 
       - name: Create up.ini to install tempest  in the Unified Planning
         run: |
-          echo -e "[engine tempest]\nmodule_name: tempest.engine\nclass_name: TempestEngine\n[engine tempest-ni]\nmodule_name: tempest.engine\nclass_name: TempestNonIncremental" > .up.ini
+          echo -e "[engine tempest]\nmodule_name: tempest.engine\nclass_name: TempestEngine\n[engine tempest-ni]\nmodule_name: tempest.engine\nclass_name: TempestNonIncremental\n[engine tempest-opt]\nmodule_name: tempest.engine\nclass_name: TempestOptimalEngine" > .up.ini
 
       - name: Run the report
-        run: python3 unified-planning/up_test_cases/report.py tempest -m oneshot -t 3
-
-      - name: Run the report on non incremental
-        run: python3 unified-planning/up_test_cases/report.py tempest-ni -m oneshot -t 3
+        run: python3 unified-planning/up_test_cases/report.py tempest tempest-ni tempest-opt -m oneshot -t 3 -e test_cases -b logistic
