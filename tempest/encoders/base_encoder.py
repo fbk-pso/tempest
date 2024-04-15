@@ -164,13 +164,14 @@ class BaseEncoder(ABC):
             smt_tp_1 = self.encode_tp(action, it.lower, w)
             smt_tp_2 = self.encode_tp(action, it.upper, w)
 
-
         non_empty_interval_operand = self.mgr.GE
         if it.is_left_open() or it.is_right_open():
             non_empty_interval_operand = self.mgr.GT
+        if self._is_never_empty_interval(it):
+            # adding True instead of a trivially True expression (e.g. 5 > 3)
+            non_empty_interval_operand = lambda x, y: self.mgr.TRUE()
 
-        if it.lower == it.upper and (it.is_left_open() or it.is_right_open()):
-            # Empty interval condition
+        if self._is_always_empty_interval(it):
             return self.mgr.TRUE()
         elif it.lower == it.upper:
             smt_tp = smt_tp_1
@@ -202,6 +203,26 @@ class BaseEncoder(ABC):
                 formula = self.mgr.And(formula, extra_formula)
 
         return formula
+
+    def _is_always_empty_interval(self, interval) -> bool:
+        lower, upper = interval.lower, interval.upper
+        if lower.is_from_start() != upper.is_from_start():
+            # One is from start and the other from end
+            return False
+        elif interval.is_left_open() or interval.is_right_open():
+            return lower.delay >= upper.delay
+        else:
+            return lower.delay > upper.delay
+
+    def _is_never_empty_interval(self, interval) -> bool:
+        lower, upper = interval.lower, interval.upper
+        if lower.is_from_start() != upper.is_from_start():
+            # One is from start and the other from end
+            return False
+        elif interval.is_left_open() or interval.is_right_open():
+            return lower.delay < upper.delay
+        else:
+            return lower.delay <= upper.delay
 
     def encode_action_duration(self, action, i):
         smt_dur = self.dur(action, i)
