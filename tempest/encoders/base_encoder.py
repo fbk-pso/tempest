@@ -8,6 +8,7 @@ import unified_planning as up
 from unified_planning.plans import SequentialPlan, TimeTriggeredPlan
 from unified_planning.model import DurativeAction, FNode, Action, Timing, InstantaneousAction, StartTiming, GlobalEndTiming, Effect, Fluent
 from unified_planning.model.fluent import get_all_fluent_exp
+from unified_planning.model.walkers import Simplifier, QuantifierSimplifier, AnyGetter
 
 from tempest.converter import SMTConverter
 from tempest.encoders.symbol_encoder import SymbolEncoder
@@ -23,6 +24,8 @@ Event = Tuple[Optional[Action], Timing, FrozenSet[FNode], FrozenSet[Effect]]
 class BaseEncoder(ABC):
     def __init__(self, problem, pysmt_env, optimal: bool = False):
         self.problem = problem
+        self.simplifier = Simplifier(problem.environment, problem)
+        self.param_getter = AnyGetter(lambda x: x.is_parameter_exp())
         self.em = self.problem.environment.expression_manager
         assert pysmt_env is not None
         self.pysmt_env = pysmt_env

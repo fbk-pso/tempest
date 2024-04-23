@@ -49,6 +49,8 @@ class _BaseEngine(up.engines.Engine, up.engines.mixins.OneshotPlannerMixin):
         base_kind.set_time("SELF_OVERLAPPING")
         base_kind.set_expression_duration("STATIC_FLUENTS_IN_DURATIONS")
         base_kind.set_expression_duration("FLUENTS_IN_DURATIONS")
+        base_kind.set_expression_duration("INT_TYPE_DURATIONS")
+        base_kind.set_expression_duration("REAL_TYPE_DURATIONS")
         base_kind.set_numbers("CONTINUOUS_NUMBERS")
         base_kind.set_numbers("DISCRETE_NUMBERS")
         base_kind.set_numbers("BOUNDED_TYPES")
@@ -72,6 +74,8 @@ class _BaseEngine(up.engines.Engine, up.engines.mixins.OneshotPlannerMixin):
         base_kind.set_parameters("UNBOUNDED_INT_ACTION_PARAMETERS")
         base_kind.set_parameters("REAL_ACTION_PARAMETERS")
         base_kind.set_fluents_type("NUMERIC_FLUENTS")
+        base_kind.set_fluents_type("INT_FLUENTS")
+        base_kind.set_fluents_type("REAL_FLUENTS")
         base_kind.set_fluents_type("OBJECT_FLUENTS")
         return base_kind
 
@@ -181,6 +185,10 @@ class TempestOptimalEngine(_BaseEngine):
     def supported_kind() -> ProblemKind:
         supported_kind = _BaseEngine._base_kind()
         supported_kind.set_quality_metrics("MAKESPAN")
+        supported_kind.set_quality_metrics("ACTIONS_COST")
+        supported_kind.set_actions_cost_kind("STATIC_FLUENTS_IN_ACTIONS_COST")
+        supported_kind.set_actions_cost_kind("INT_NUMBERS_IN_ACTIONS_COST")
+        supported_kind.set_actions_cost_kind("REAL_NUMBERS_IN_ACTIONS_COST")
         return supported_kind
 
     @staticmethod
