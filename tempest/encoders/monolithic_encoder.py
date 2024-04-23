@@ -3,7 +3,6 @@ from itertools import chain, product
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 from tempest.encoders.base_encoder import BaseEncoder
 from unified_planning.model import DurativeAction, InstantaneousAction, MinimizeActionCosts, FNode, Parameter
-from unified_planning.model.types import domain_size, domain_item, Type
 from pysmt.optimization.goal import MinimizationGoal, MaxSMTGoal
 
 
@@ -93,7 +92,7 @@ class MonolithicEncoder(BaseEncoder):
 
         if self.optimal:
             # Encode actions
-            for a in self.problem.actions:
+            for a in self.grounded_problem.actions:
                 if isinstance(a, InstantaneousAction):
                     res.append(self.encode_abstract_instantaneous_action(a, h))
                 elif isinstance(a, DurativeAction):
@@ -108,7 +107,7 @@ class MonolithicEncoder(BaseEncoder):
         for g in self.problem.goals:
             goal_formula = self.to_smt(g, h - 1)
             if self.optimal:
-                goal_formula = self.mgr.Or(chain([goal_formula], (self.fluent_mod(exp.fluent(), h) for exp in fve.get(g))))
+                goal_formula = self.mgr.Or(chain([goal_formula], (self.fluent_mod(exp, None, None, h) for exp in fve.get(g))))
             res.append(goal_formula)
 
         return None, res
@@ -159,18 +158,6 @@ class MonolithicEncoder(BaseEncoder):
             assert grounded_cost.is_constant(), f"Non constant expression detected in ActionCosts: {action.name}, {metric.get_action_cost(action)}"
             res.append((assignments, grounded_cost))
         return res
-
-    @lru_cache(maxsize=None)
-    def _get_possible_parameters_assignments(self, parameters: Tuple[FNode, ...]) -> Tuple[Tuple[FNode, ...], ...]:
-        # Generates all the possible assignments that the given parameters have in the given problem
-        types = tuple(param.type for param in parameters)
-        domain_sizes = tuple(domain_size(self.problem, t) for t in types)
-        items_list: List[List[FNode]] = []
-        for size, type in zip(domain_sizes, types):
-            items_list.append(
-                [domain_item(self.problem, type, j) for j in range(size)]
-            )
-        return tuple(product(*items_list))
 
     def encode_density_constraints(self, h: int):
         assert self.optimal
