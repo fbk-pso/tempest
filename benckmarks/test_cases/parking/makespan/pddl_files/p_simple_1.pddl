@@ -11,7 +11,6 @@
     (curb-clear curb_03)
     (car-clear car_00)
     (car-clear car_01)
-  (= (total-cost) 0)
   )
   (:goal
     (and
@@ -19,7 +18,7 @@
       (at-curb-num car_01 curb_03)
     )
   )
-(:metric minimize (total-cost))
+(:metric minimize (total-time))
 )
 ; =========== INIT ===========
 ;  curb_00: car_07 car_00
