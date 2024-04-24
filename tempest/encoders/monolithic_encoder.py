@@ -124,15 +124,25 @@ class MonolithicEncoder(BaseEncoder):
 
     def _get_max_smt_goal(self, metric, h: int) -> MaxSMTGoal:
         goal = MaxSMTGoal()
+        range_lim = h if self.ground_abstract_step else h+1
         for a in self.problem.actions:
             for assignments, cost in self._get_action_costs(metric, a):
                 weight = cost.constant_value()
-                for i in range(h+1):
+                for i in range(range_lim):
                     clauses = [self.a(a, i)]
                     for param_exp, obj_exp in assignments.items():
                         assert param_exp.is_parameter_exp()
                         clauses.append(self.mgr.EqualsOrIff(self.to_smt(param_exp, i, scope=a), self.to_smt(obj_exp, i)))
                     goal.add_soft_clause(self.mgr.Not(self.mgr.And(clauses)), weight)
+
+        # The cost of the action in the abstract step must be added
+        if self.ground_abstract_step:
+            grounded_metric = self.grounded_metrics[0]
+            assert grounded_metric.is_minimize_action_costs()
+            for a in self.grounded_problem.actions:
+                cost = self.simplifier.simplify(grounded_metric.get_action_cost(a))
+                weight = cost.constant_value()
+                goal.add_soft_clause(self.mgr.Not(self.a(a, h)), weight)
         return goal
 
     @lru_cache(maxsize=None)

@@ -35,10 +35,12 @@ class BaseEncoder(ABC):
         self.optimal = optimal
         self.ground_abstract_step = ground_abstract_step
         self.grounded_problem = problem
+        self.grounded_metrics = problem.quality_metrics
         if ground_abstract_step and optimal:
             with self.problem.environment.factory.Compiler(name=grounder_name) as grounder:
                 comp_res = grounder.compile(problem, CompilationKind.GROUNDING)
                 self.grounded_problem = comp_res.problem
+                self.grounded_metrics = self.grounded_problem.quality_metrics
 
         self.converters = {}
 
@@ -549,7 +551,8 @@ class BaseEncoder(ABC):
 
     @lru_cache(maxsize=None)
     def _ground_fluent_mod(self, fluent_exp, h):
-        assert isinstance(fluent_exp, FNode) and not self.param_getter.get(fluent_exp)
+        assert isinstance(fluent_exp, FNode)
+        assert not (self.param_getter.get(fluent_exp) and self.ground_abstract_step)
         res = []
         fluent_touchers_dict = self.grounded_touchers.get(fluent_exp.fluent(), None)
         if fluent_touchers_dict is None:
@@ -584,7 +587,7 @@ class BaseEncoder(ABC):
     # @lru_cache(maxsize=None) Todo understand if it's worth to cache this
     def fluent_mod(self, fluent_exp, a, w, h):
         p = self.param_getter.get(fluent_exp)
-        if not p:
+        if not p or not self.ground_abstract_step:
             return self._ground_fluent_mod(fluent_exp, h)
         res = []
         assert a is not None and w is not None
@@ -595,7 +598,7 @@ class BaseEncoder(ABC):
             sub_res = []
             assignments = dict(zip(relevant_parameters, parameters_value))
             ground_fluent_exp = fluent_exp.substitute(assignments)
-            sub_res.append(self._ground_fluent_mod(ground_fluent_exp))
+            sub_res.append(self._ground_fluent_mod(ground_fluent_exp, h))
             for param_exp, obj_exp in assignments.items():
                 assert param_exp.is_parameter_exp()
                 sub_res.append(self.mgr.EqualsOrIff(self.to_smt(param_exp, w, w, scope=a), self.to_smt(obj_exp, w)))

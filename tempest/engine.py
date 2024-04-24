@@ -174,8 +174,10 @@ class TempestNonIncremental(TempestEngine):
 
 class TempestOptimalEngine(_BaseEngine):
     """Implementation of the TemPEST Optimal Engine."""
-    def __init__(self, incremental=False, horizon=None):
+    def __init__(self, incremental=False, horizon=None, ground_abstract_step: bool = True, grounder_name: str = "up_grounder"):
         super().__init__(incremental, horizon)
+        self.ground_abstract_step = ground_abstract_step
+        self.grounder_name = grounder_name
 
     @property
     def name(self) -> str:
@@ -215,11 +217,18 @@ class TempestOptimalEngine(_BaseEngine):
             warnings.warn("TemPEST does not support custom heuristics.", UserWarning)
         pysmt_env = pysmt.environment.Environment()
 
+        kind = problem.kind
+        ground_abstract_step = self.ground_abstract_step
+        if ground_abstract_step and (kind.has_unbounded_int_action_parameters() or kind.has_real_action_parameters()):
+            warnings.warn("The problem can't be grounded so the flag ground_abstract_step is disabled in this solve call", UserWarning)
+            ground_abstract_step = False
+
         modify_horizon = lambda x: x
         if self.incremental:
             raise NotImplementedError()
         else:
-            encoder = MonolithicEncoder(problem, pysmt_env=pysmt_env, optimal=True)
+            encoder = MonolithicEncoder(problem, pysmt_env=pysmt_env, optimal=True,
+                ground_abstract_step=ground_abstract_step, grounder_name=self.grounder_name)
 
         start_time = time()
         is_in_timeout: bool = False
@@ -278,3 +287,8 @@ class TempestOptimalEngine(_BaseEngine):
         return PlanGenerationResult(
             status, None, self.name
         )
+
+
+class TempestLiftedAbstractStep(TempestOptimalEngine):
+    def __init__(self, incremental = False, horizon=None):
+        super().__init__(incremental, horizon, False, "")

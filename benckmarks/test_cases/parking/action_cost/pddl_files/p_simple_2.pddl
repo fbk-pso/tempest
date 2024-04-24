@@ -6,11 +6,11 @@
   )
   (:init
     (at-curb-num car_00 curb_00)
-    (at-curb-num car_01 curb_01)
+    (behind-car car_01 car_00)
+    (car-clear car_01)
+    (curb-clear curb_01)
     (curb-clear curb_02)
     (curb-clear curb_03)
-    (car-clear car_00)
-    (car-clear car_01)
   (= (total-cost) 0)
   )
   (:goal
