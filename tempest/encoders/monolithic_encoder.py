@@ -1,9 +1,9 @@
 from functools import lru_cache
-from itertools import chain
-from typing import Any, Optional, Tuple
+from itertools import chain, product
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 from tempest.encoders.base_encoder import BaseEncoder
-from unified_planning.model import DurativeAction, InstantaneousAction
-from unified_planning.model.walkers import QuantifierSimplifier
+from unified_planning.model import DurativeAction, InstantaneousAction, MinimizeActionCosts, FNode, Parameter
+from unified_planning.model.types import domain_size, domain_item, Type
 from pysmt.optimization.goal import MinimizationGoal, MaxSMTGoal
 
 
@@ -115,11 +115,62 @@ class MonolithicEncoder(BaseEncoder):
 
     def objective_to_minimize(self, h: int):
         assert len(self.problem.quality_metrics) < 2, "Problem has more than one quality metric"
-        metric = self.problem.quality_metrics[-1] if self.problem.quality_metrics else None
+        metric = self.problem.quality_metrics[0] if self.problem.quality_metrics else None
         if metric is None or metric.is_minimize_makespan():
             return MinimizationGoal(self.t(h-1)), None
+        elif metric.is_minimize_action_costs():
+            return self._get_max_smt_goal(metric, h), None
         else:
             raise NotImplementedError(f"Metric {metric} not supported")
+
+    def _get_max_smt_goal(self, metric, h: int) -> MaxSMTGoal:
+        goal = MaxSMTGoal()
+        for a in self.problem.actions:
+            for assignments, cost in self._get_action_costs(metric, a):
+                weight = cost.constant_value()
+                for i in range(h+1):
+                    clauses = [self.a(a, i)]
+                    for param_exp, obj_exp in assignments.items():
+                        assert param_exp.is_parameter_exp()
+                        clauses.append(self.mgr.EqualsOrIff(self.to_smt(param_exp, i, scope=a), self.to_smt(obj_exp, i)))
+                    goal.add_soft_clause(self.mgr.Not(self.mgr.And(clauses)), weight)
+        return goal
+
+    @lru_cache(maxsize=None)
+    def _get_action_costs(self, metric, action) -> List[Tuple[Dict[FNode, FNode], FNode]]:
+        # This method takes the metric and the action and returns a list
+        # containing  Tuples, each Tuple contains 2 element, the first one is
+        # a Dictionary that contains as keys the action parameters and
+        # as values the object used to ground the action and generate a constant cost
+        #
+        # One important note is that this method does not generate every possible grounding of
+        # the action, but only grounds the parameters that are actually involved in the cost
+        assert isinstance(metric, MinimizeActionCosts)
+        cost = self.simplifier.simplify(metric.get_action_cost(action))
+        if cost.is_constant(): # cost does not depend on parameters
+            return [({}, cost)]
+        res = []
+        p = self.param_getter.get(cost)
+        relevant_parameters = tuple(filter(lambda x: x in p, (self.em.ParameterExp(ap) for ap in action.parameters)))
+        assert relevant_parameters and len(p) == len(relevant_parameters)
+        for parameters_value in self._get_possible_parameters_assignments(relevant_parameters):
+            assignments = dict(zip(relevant_parameters, parameters_value))
+            grounded_cost = self.simplifier.simplify(cost.substitute(assignments))
+            assert grounded_cost.is_constant(), f"Non constant expression detected in ActionCosts: {action.name}, {metric.get_action_cost(action)}"
+            res.append((assignments, grounded_cost))
+        return res
+
+    @lru_cache(maxsize=None)
+    def _get_possible_parameters_assignments(self, parameters: Tuple[FNode, ...]) -> Tuple[Tuple[FNode, ...], ...]:
+        # Generates all the possible assignments that the given parameters have in the given problem
+        types = tuple(param.type for param in parameters)
+        domain_sizes = tuple(domain_size(self.problem, t) for t in types)
+        items_list: List[List[FNode]] = []
+        for size, type in zip(domain_sizes, types):
+            items_list.append(
+                [domain_item(self.problem, type, j) for j in range(size)]
+            )
+        return tuple(product(*items_list))
 
     def encode_density_constraints(self, h: int):
         assert self.optimal
@@ -162,8 +213,5 @@ class MonolithicEncoder(BaseEncoder):
                     end_a_i = self.mgr.Plus(self.t(i), self.dur(act, i))
                     ends_before_abstract = self.mgr.LE(end_a_i, last_concrete_step_time)
                     res.append(self.mgr.Implies(a_i, ends_before_abstract))
-            # TODO understand if those are needed
-            a_h = self.a(act, h)
-            res.append(self.mgr.Not(a_h))
 
         return self.mgr.Not(self.mgr.And(res))
