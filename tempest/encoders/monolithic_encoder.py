@@ -137,9 +137,9 @@ class MonolithicEncoder(BaseEncoder):
 
         # The cost of the action in the abstract step must be added
         if self.ground_abstract_step:
-            grounded_metric = self.grounded_metrics[0]
+            grounded_metric = self.abstract_step_metrics[0]
             assert grounded_metric.is_minimize_action_costs()
-            for a in self.grounded_problem.actions:
+            for a in self.abstract_step_actions:
                 cost = self.simplifier.simplify(grounded_metric.get_action_cost(a))
                 weight = cost.constant_value()
                 goal.add_soft_clause(self.mgr.Not(self.a(a, h)), weight)
@@ -177,7 +177,7 @@ class MonolithicEncoder(BaseEncoder):
             t_i = self.t(i)
 
             for t in self.problem.timed_effects.keys():
-                sub_res.append(self.mgr.Equals(self.encode_problem_tp(t, h), t_i)) # TODO check if use EqualsOrIff
+                sub_res.append(self.mgr.Equals(self.encode_problem_tp(t, h), t_i))
 
             for act in self.problem.actions:
                 sub_res.append(self.a(act, i))

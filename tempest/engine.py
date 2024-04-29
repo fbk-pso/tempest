@@ -174,7 +174,7 @@ class TempestNonIncremental(TempestEngine):
 
 class TempestOptimalEngine(_BaseEngine):
     """Implementation of the TemPEST Optimal Engine."""
-    def __init__(self, incremental=False, horizon=None, ground_abstract_step: bool = True, grounder_name: str = "up_grounder"):
+    def __init__(self, incremental=False, horizon=None, ground_abstract_step: bool = True, grounder_name: Optional[str] = None):
         super().__init__(incremental, horizon)
         self.ground_abstract_step = ground_abstract_step
         self.grounder_name = grounder_name

@@ -24,7 +24,7 @@ Event = Tuple[Optional[Action], Timing, FrozenSet[FNode], FrozenSet[Effect]]
 
 
 class BaseEncoder(ABC):
-    def __init__(self, problem, pysmt_env, optimal: bool = False, ground_abstract_step: bool = True, grounder_name: str = "up_grounder"):
+    def __init__(self, problem, pysmt_env, optimal: bool = False, ground_abstract_step: bool = True, grounder_name: Optional[str] = None):
         self.problem = problem
         self.simplifier = Simplifier(problem.environment, problem)
         self.param_getter = AnyGetter(lambda x: x.is_parameter_exp())
@@ -34,13 +34,15 @@ class BaseEncoder(ABC):
         self.mgr = self.pysmt_env.formula_manager
         self.optimal = optimal
         self.ground_abstract_step = ground_abstract_step
-        self.grounded_problem = problem
+        grounded_problem = problem
         self.grounded_metrics = problem.quality_metrics
         if ground_abstract_step and optimal:
-            with self.problem.environment.factory.Compiler(name=grounder_name) as grounder:
+            with self.problem.environment.factory.Compiler(name=grounder_name, compilation_kind=CompilationKind.GROUNDING, problem_kind = problem.kind) as grounder:
                 comp_res = grounder.compile(problem, CompilationKind.GROUNDING)
-                self.grounded_problem = comp_res.problem
-                self.grounded_metrics = self.grounded_problem.quality_metrics
+                grounded_problem = comp_res.problem
+                self.grounded_metrics = grounded_problem.quality_metrics
+        self.abstract_step_actions = grounded_problem.actions
+        self.abstract_step_metrics = grounded_problem.quality_metrics
 
         self.converters = {}
 
@@ -58,9 +60,9 @@ class BaseEncoder(ABC):
         self.symenc = SymbolEncoder(self.objects, self.pysmt_env)
 
         self.touchers = self._get_touchers(problem)
-        self.grounded_touchers = self.touchers
+        self.abstract_step_touchers = self.touchers
         if ground_abstract_step:
-            self.grounded_touchers = self._get_touchers(self.grounded_problem)
+            self.abstract_step_touchers = self._get_touchers(grounded_problem)
 
         self._mutex_couples: Set[FrozenSet[Event]] = self._get_mutex_couples()
 
@@ -554,18 +556,17 @@ class BaseEncoder(ABC):
         assert isinstance(fluent_exp, FNode)
         assert not (self.param_getter.get(fluent_exp) and self.ground_abstract_step)
         res = []
-        fluent_touchers_dict = self.grounded_touchers.get(fluent_exp.fluent(), None)
-        if fluent_touchers_dict is None:
+        abstract_fluent_touchers = self.abstract_step_touchers.get(fluent_exp.fluent(), None)
+        if abstract_fluent_touchers is None:
             return self.mgr.FALSE()
 
         if self.ground_abstract_step:
-            fluent_touchers = fluent_touchers_dict.get(fluent_exp, [])
+            fluent_touchers_gen = abstract_fluent_touchers.get(fluent_exp, [])
         else:
-            fluent_touchers = chain(*fluent_touchers_dict.values())
+            fluent_touchers_gen = chain(*abstract_fluent_touchers.values())
 
-        for action, timing, _ in fluent_touchers:
+        for action, timing, _ in fluent_touchers_gen:
             if action is None:
-                # TODO decomment assert (commented due problem in UP tests), assert timing.is_global()
                 til_in_abstract_step = self.mgr.GT(self.encode_problem_tp(timing, h), self.t(h-1))
                 res.append(til_in_abstract_step)
             elif timing is None:
@@ -574,13 +575,28 @@ class BaseEncoder(ABC):
                 res.append(action_in_abstract_step)
             else:
                 assert isinstance(action, DurativeAction)
+                a_h = self.a(action, h)
+                res.append(a_h)
+
+        fluent_touchers = self.touchers.get(fluent_exp.fluent(), None)
+        if fluent_touchers is not None and self.ground_abstract_step:
+            # TODO
+            pass
+            # Here it should iterate over all the touchers,
+            # see if the toucher CAN touch this particular grounding
+            # if it can, find which parameters must have which value in order to be the same
+            # add the condition below in AND with "parameters must have the same value"
+        elif fluent_touchers is not None:
+            fluent_touchers_gen = chain(*fluent_touchers.values())
+            for action, timing, _ in fluent_touchers_gen:
                 last_concrete_step_time = self.t(h-1)
-                for i in range(1, h+1):
+                for i in range(1, h):
                     a_i = self.a(action, i)
                     effect_time = self.encode_tp(action, timing, i)
                     effect_in_abstract_step = self.mgr.GT(effect_time, last_concrete_step_time)
                     effect_performed_in_abstract_step = self.mgr.And(a_i, effect_in_abstract_step)
                     res.append(effect_performed_in_abstract_step)
+
 
         return self.mgr.Or(res)
 
