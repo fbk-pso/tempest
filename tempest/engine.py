@@ -217,18 +217,12 @@ class TempestOptimalEngine(_BaseEngine):
             warnings.warn("TemPEST does not support custom heuristics.", UserWarning)
         pysmt_env = pysmt.environment.Environment()
 
-        kind = problem.kind
-        ground_abstract_step = self.ground_abstract_step
-        if ground_abstract_step and (kind.has_unbounded_int_action_parameters() or kind.has_real_action_parameters()):
-            warnings.warn("The problem can't be grounded so the flag ground_abstract_step is disabled in this solve call", UserWarning)
-            ground_abstract_step = False
-
         modify_horizon = lambda x: x
         if self.incremental:
             raise NotImplementedError()
         else:
             encoder = MonolithicEncoder(problem, pysmt_env=pysmt_env, optimal=True,
-                ground_abstract_step=ground_abstract_step, grounder_name=self.grounder_name)
+                ground_abstract_step=self.ground_abstract_step, grounder_name=self.grounder_name)
 
         start_time = time()
         is_in_timeout: bool = False

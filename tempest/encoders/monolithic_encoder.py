@@ -110,7 +110,7 @@ class MonolithicEncoder(BaseEncoder):
                 goal_formula = self.mgr.Or(chain([goal_formula], (self.fluent_mod(exp, None, None, h) for exp in fve.get(g))))
             res.append(goal_formula)
 
-        # fluent_mod values
+        # fluent_mod variables
         for fluent_mod_value, fluent_mod_var in self.fluent_mod_formulae_mapping.items():
             res.append(self.mgr.Iff(fluent_mod_var, fluent_mod_value))
 

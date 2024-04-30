@@ -2,11 +2,13 @@ from itertools import chain, product
 from typing import Any, Dict, FrozenSet, List, Optional, Set, Tuple
 from functools import lru_cache
 from abc import ABC, abstractmethod
+import warnings
 import pysmt
 
 import unified_planning as up
 from unified_planning.engines import CompilationKind
-from unified_planning.model import DurativeAction, FNode, Action, Timing, InstantaneousAction, StartTiming, GlobalEndTiming, Effect, Fluent
+from unified_planning.exceptions import UPNoSuitableEngineAvailableException
+from unified_planning.model import DurativeAction, FNode, Action, Timing, InstantaneousAction, StartTiming, GlobalEndTiming, Effect
 from unified_planning.model.fluent import get_all_fluent_exp
 from unified_planning.model.types import domain_size, domain_item
 from unified_planning.model.walkers import Simplifier, AnyGetter
@@ -35,15 +37,18 @@ class BaseEncoder(ABC):
         self.optimal = optimal
         self.ground_abstract_step = ground_abstract_step
         grounded_problem = problem
-        self.grounded_metrics = problem.quality_metrics
         self.map_back_action_instance = lambda x: x
         if ground_abstract_step and optimal:
-            with self.problem.environment.factory.Compiler(name=grounder_name, compilation_kind=CompilationKind.GROUNDING, problem_kind = problem.kind) as grounder:
-                comp_res = grounder.compile(problem, CompilationKind.GROUNDING)
-                grounded_problem = comp_res.problem
-                self.grounded_metrics = grounded_problem.quality_metrics
-                self.map_back_action_instance = comp_res.map_back_action_instance
+            try:
+                with self.problem.environment.factory.Compiler(name=grounder_name, compilation_kind=CompilationKind.GROUNDING, problem_kind=problem.kind) as grounder:
+                    comp_res = grounder.compile(problem, CompilationKind.GROUNDING)
+                    grounded_problem = comp_res.problem
+                    self.map_back_action_instance = comp_res.map_back_action_instance
+            except UPNoSuitableEngineAvailableException:
+                warnings.warn("There are no grounders for this problem so the ground_abstract_step is disabled in this solve call", UserWarning)
+                self.ground_abstract_step = False
 
+        self.grounded_metrics = grounded_problem.quality_metrics
         self.abstract_step_actions = grounded_problem.actions
         self.abstract_step_metrics = grounded_problem.quality_metrics
         self.fluent_mod_formulae_mapping: Dict[Any, Any] = {}
@@ -622,7 +627,6 @@ class BaseEncoder(ABC):
             ground_fluent_exp = fluent_exp.substitute(assignments)
             sub_res.append(self._fluent_mod_formula(ground_fluent_exp, h))
             for param_exp, obj_exp in assignments.items():
-                assert param_exp.is_parameter_exp()
                 sub_res.append(self.mgr.EqualsOrIff(self.to_smt(param_exp, w, w, scope=a), self.to_smt(obj_exp, w)))
             res.append(self.mgr.And(sub_res))
         return self.mgr.Or(res)
