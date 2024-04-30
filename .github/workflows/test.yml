@@ -4,7 +4,7 @@ on:
   push
 
 env:
-  unified_planning_commit: "067e3a133b1201ea07fd157dbd19916e372ea158"
+  unified_planning_commit: "c0fb5f688c454889814187757641744dde24e5bc"
 
 jobs:
   unified-planning-report:

@@ -1,5 +1,5 @@
 from itertools import chain, product
-from typing import Any, FrozenSet, List, Optional, Set, Tuple
+from typing import Any, Dict, FrozenSet, List, Optional, Set, Tuple
 from functools import lru_cache
 from abc import ABC, abstractmethod
 import pysmt
@@ -36,13 +36,17 @@ class BaseEncoder(ABC):
         self.ground_abstract_step = ground_abstract_step
         grounded_problem = problem
         self.grounded_metrics = problem.quality_metrics
+        self.map_back_action_instance = lambda x: x
         if ground_abstract_step and optimal:
             with self.problem.environment.factory.Compiler(name=grounder_name, compilation_kind=CompilationKind.GROUNDING, problem_kind = problem.kind) as grounder:
                 comp_res = grounder.compile(problem, CompilationKind.GROUNDING)
                 grounded_problem = comp_res.problem
                 self.grounded_metrics = grounded_problem.quality_metrics
+                self.map_back_action_instance = comp_res.map_back_action_instance
+
         self.abstract_step_actions = grounded_problem.actions
         self.abstract_step_metrics = grounded_problem.quality_metrics
+        self.fluent_mod_formulae_mapping: Dict[Any, Any] = {}
 
         self.converters = {}
 
@@ -497,9 +501,6 @@ class BaseEncoder(ABC):
             for e in le:
                 fluent_dict = touchers.setdefault(e.fluent.fluent(), {})
                 fluent_dict.setdefault(e.fluent, []).append((None, t, e))
-
-        for f, d in touchers.items():
-            assert isinstance(d, dict), str(touchers) + str(d)
         return touchers
 
     def encode_mutex_constraints(self, i, j, h):
@@ -552,7 +553,7 @@ class BaseEncoder(ABC):
         return self.mgr.LE(self.mgr.Plus(self.t(i - 1), self.mgr.Real(self.problem.epsilon)), self.t(i))
 
     @lru_cache(maxsize=None)
-    def _ground_fluent_mod(self, fluent_exp, h):
+    def _fluent_mod_formula(self, fluent_exp, h):
         assert isinstance(fluent_exp, FNode)
         assert not (self.param_getter.get(fluent_exp) and self.ground_abstract_step)
         res = []
@@ -565,7 +566,7 @@ class BaseEncoder(ABC):
         else:
             fluent_touchers_gen = chain(*abstract_fluent_touchers.values())
 
-        for action, timing, _ in fluent_touchers_gen:
+        for action, timing, eff in fluent_touchers_gen:
             if action is None:
                 til_in_abstract_step = self.mgr.GT(self.encode_problem_tp(timing, h), self.t(h-1))
                 res.append(til_in_abstract_step)
@@ -575,36 +576,41 @@ class BaseEncoder(ABC):
                 res.append(action_in_abstract_step)
             else:
                 assert isinstance(action, DurativeAction)
+                last_concrete_step_time = self.t(h-1)
+                concrete_action, parameters_assignment = action, {}
+                if self.ground_abstract_step:
+                    concrete_ai = self.map_back_action_instance(action())
+                    concrete_action = concrete_ai.action
+                    parameters_assignment = dict(zip(action.parameters, concrete_ai.actual_parameters))
+                    # TODO: future improvements, it would be nice to remove action parameters that do not
+                    # appear in the effect from the assignment mapping
+                for i in range(1, h):
+                    a_i = self.a(concrete_action, i)
+                    parameters_equality = []
+                    for param_exp, obj_exp in parameters_assignment.items():
+                        parameters_equality.append(self.mgr.EqualsOrIff(self.to_smt(param_exp, i, i, scope=concrete_action), self.to_smt(obj_exp, i)))
+                    p_eq = self.mgr.And(parameters_equality)
+                    effect_time = self.encode_tp(concrete_action, timing, i)
+                    effect_in_abstract_step = self.mgr.GT(effect_time, last_concrete_step_time)
+                    effect_performed_in_abstract_step = self.mgr.And(a_i, p_eq, effect_in_abstract_step)
+                    res.append(effect_performed_in_abstract_step)
+                # No need to check for parameters because either the action is grounded or the fluent_mod is considered on the lifted fluent
                 a_h = self.a(action, h)
                 res.append(a_h)
 
-        fluent_touchers = self.touchers.get(fluent_exp.fluent(), None)
-        if fluent_touchers is not None and self.ground_abstract_step:
-            # TODO
-            pass
-            # Here it should iterate over all the touchers,
-            # see if the toucher CAN touch this particular grounding
-            # if it can, find which parameters must have which value in order to be the same
-            # add the condition below in AND with "parameters must have the same value"
-        elif fluent_touchers is not None:
-            fluent_touchers_gen = chain(*fluent_touchers.values())
-            for action, timing, _ in fluent_touchers_gen:
-                last_concrete_step_time = self.t(h-1)
-                for i in range(1, h):
-                    a_i = self.a(action, i)
-                    effect_time = self.encode_tp(action, timing, i)
-                    effect_in_abstract_step = self.mgr.GT(effect_time, last_concrete_step_time)
-                    effect_performed_in_abstract_step = self.mgr.And(a_i, effect_in_abstract_step)
-                    res.append(effect_performed_in_abstract_step)
+        fluent_mod_formula = self.mgr.Or(res)
+        fluent_mod_var = self.fluent_mod_formulae_mapping.get(fluent_mod_formula, None)
+        if fluent_mod_var is None:
+            fluent_mod_var = self.mgr.FreshSymbol(template=f"phi_{h}_mod_{fluent_exp}%d")
+            self.fluent_mod_formulae_mapping[fluent_mod_formula] = fluent_mod_var
+        assert fluent_mod_var is not None
+        return fluent_mod_var
 
-
-        return self.mgr.Or(res)
-
-    # @lru_cache(maxsize=None) Todo understand if it's worth to cache this
+    @lru_cache(maxsize=None)
     def fluent_mod(self, fluent_exp, a, w, h):
         p = self.param_getter.get(fluent_exp)
         if not p or not self.ground_abstract_step:
-            return self._ground_fluent_mod(fluent_exp, h)
+            return self._fluent_mod_formula(fluent_exp, h)
         res = []
         assert a is not None and w is not None
         # relevant parameters are computed in order to eliminate randomness in the order
@@ -614,7 +620,7 @@ class BaseEncoder(ABC):
             sub_res = []
             assignments = dict(zip(relevant_parameters, parameters_value))
             ground_fluent_exp = fluent_exp.substitute(assignments)
-            sub_res.append(self._ground_fluent_mod(ground_fluent_exp, h))
+            sub_res.append(self._fluent_mod_formula(ground_fluent_exp, h))
             for param_exp, obj_exp in assignments.items():
                 assert param_exp.is_parameter_exp()
                 sub_res.append(self.mgr.EqualsOrIff(self.to_smt(param_exp, w, w, scope=a), self.to_smt(obj_exp, w)))

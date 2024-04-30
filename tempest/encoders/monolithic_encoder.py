@@ -92,7 +92,7 @@ class MonolithicEncoder(BaseEncoder):
 
         if self.optimal:
             # Encode actions
-            for a in self.grounded_problem.actions:
+            for a in self.abstract_step_actions:
                 if isinstance(a, InstantaneousAction):
                     res.append(self.encode_abstract_instantaneous_action(a, h))
                 elif isinstance(a, DurativeAction):
@@ -109,6 +109,10 @@ class MonolithicEncoder(BaseEncoder):
             if self.optimal:
                 goal_formula = self.mgr.Or(chain([goal_formula], (self.fluent_mod(exp, None, None, h) for exp in fve.get(g))))
             res.append(goal_formula)
+
+        # fluent_mod values
+        for fluent_mod_value, fluent_mod_var in self.fluent_mod_formulae_mapping.items():
+            res.append(self.mgr.Iff(fluent_mod_var, fluent_mod_value))
 
         return None, res
 
