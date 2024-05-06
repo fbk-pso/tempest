@@ -3,7 +3,6 @@ from itertools import chain, product
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 from tempest.encoders.base_encoder import BaseEncoder
 from unified_planning.model import DurativeAction, InstantaneousAction, MinimizeActionCosts, FNode, Parameter
-from unified_planning.model.types import domain_size, domain_item, Type
 from pysmt.optimization.goal import MinimizationGoal, MaxSMTGoal
 
 
@@ -93,7 +92,7 @@ class MonolithicEncoder(BaseEncoder):
 
         if self.optimal:
             # Encode actions
-            for a in self.problem.actions:
+            for a in self.abstract_step_actions:
                 if isinstance(a, InstantaneousAction):
                     res.append(self.encode_abstract_instantaneous_action(a, h))
                 elif isinstance(a, DurativeAction):
@@ -108,8 +107,12 @@ class MonolithicEncoder(BaseEncoder):
         for g in self.problem.goals:
             goal_formula = self.to_smt(g, h - 1)
             if self.optimal:
-                goal_formula = self.mgr.Or(chain([goal_formula], (self.fluent_mod(exp.fluent(), h) for exp in fve.get(g))))
+                goal_formula = self.mgr.Or(chain([goal_formula], (self.fluent_mod(exp, None, None, h) for exp in fve.get(g))))
             res.append(goal_formula)
+
+        # fluent_mod variables
+        for fluent_mod_value, fluent_mod_var in self.fluent_mod_formulae_mapping.items():
+            res.append(self.mgr.Iff(fluent_mod_var, fluent_mod_value))
 
         return None, res
 
@@ -125,15 +128,25 @@ class MonolithicEncoder(BaseEncoder):
 
     def _get_max_smt_goal(self, metric, h: int) -> MaxSMTGoal:
         goal = MaxSMTGoal()
+        range_lim = h if self.ground_abstract_step else h+1
         for a in self.problem.actions:
             for assignments, cost in self._get_action_costs(metric, a):
                 weight = cost.constant_value()
-                for i in range(h+1):
+                for i in range(range_lim):
                     clauses = [self.a(a, i)]
                     for param_exp, obj_exp in assignments.items():
                         assert param_exp.is_parameter_exp()
                         clauses.append(self.mgr.EqualsOrIff(self.to_smt(param_exp, i, scope=a), self.to_smt(obj_exp, i)))
                     goal.add_soft_clause(self.mgr.Not(self.mgr.And(clauses)), weight)
+
+        # The cost of the action in the abstract step must be added
+        if self.ground_abstract_step:
+            grounded_metric = self.abstract_step_metrics[0]
+            assert grounded_metric.is_minimize_action_costs()
+            for a in self.abstract_step_actions:
+                cost = self.simplifier.simplify(grounded_metric.get_action_cost(a))
+                weight = cost.constant_value()
+                goal.add_soft_clause(self.mgr.Not(self.a(a, h)), weight)
         return goal
 
     @lru_cache(maxsize=None)
@@ -160,18 +173,6 @@ class MonolithicEncoder(BaseEncoder):
             res.append((assignments, grounded_cost))
         return res
 
-    @lru_cache(maxsize=None)
-    def _get_possible_parameters_assignments(self, parameters: Tuple[FNode, ...]) -> Tuple[Tuple[FNode, ...], ...]:
-        # Generates all the possible assignments that the given parameters have in the given problem
-        types = tuple(param.type for param in parameters)
-        domain_sizes = tuple(domain_size(self.problem, t) for t in types)
-        items_list: List[List[FNode]] = []
-        for size, type in zip(domain_sizes, types):
-            items_list.append(
-                [domain_item(self.problem, type, j) for j in range(size)]
-            )
-        return tuple(product(*items_list))
-
     def encode_density_constraints(self, h: int):
         assert self.optimal
         res = []
@@ -180,7 +181,7 @@ class MonolithicEncoder(BaseEncoder):
             t_i = self.t(i)
 
             for t in self.problem.timed_effects.keys():
-                sub_res.append(self.mgr.Equals(self.encode_problem_tp(t, h), t_i)) # TODO check if use EqualsOrIff
+                sub_res.append(self.mgr.Equals(self.encode_problem_tp(t, h), t_i))
 
             for act in self.problem.actions:
                 sub_res.append(self.a(act, i))

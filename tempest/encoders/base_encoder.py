@@ -1,14 +1,18 @@
-from itertools import chain
-from typing import Any, FrozenSet, Optional, Set, Tuple
+from itertools import chain, product
+from typing import Any, Dict, FrozenSet, List, Optional, Set, Tuple
 from functools import lru_cache
 from abc import ABC, abstractmethod
+import warnings
 import pysmt
 
 import unified_planning as up
-from unified_planning.plans import SequentialPlan, TimeTriggeredPlan
-from unified_planning.model import DurativeAction, FNode, Action, Timing, InstantaneousAction, StartTiming, GlobalEndTiming, Effect, Fluent
+from unified_planning.engines import CompilationKind
+from unified_planning.exceptions import UPNoSuitableEngineAvailableException
+from unified_planning.model import DurativeAction, FNode, Action, Timing, InstantaneousAction, StartTiming, GlobalEndTiming, Effect
 from unified_planning.model.fluent import get_all_fluent_exp
-from unified_planning.model.walkers import Simplifier, QuantifierSimplifier, AnyGetter
+from unified_planning.model.types import domain_size, domain_item
+from unified_planning.model.walkers import Simplifier, AnyGetter
+from unified_planning.plans import SequentialPlan, TimeTriggeredPlan
 
 from tempest.converter import SMTConverter
 from tempest.encoders.symbol_encoder import SymbolEncoder
@@ -22,7 +26,7 @@ Event = Tuple[Optional[Action], Timing, FrozenSet[FNode], FrozenSet[Effect]]
 
 
 class BaseEncoder(ABC):
-    def __init__(self, problem, pysmt_env, optimal: bool = False):
+    def __init__(self, problem, pysmt_env, optimal: bool = False, ground_abstract_step: bool = True, grounder_name: Optional[str] = None):
         self.problem = problem
         self.simplifier = Simplifier(problem.environment, problem)
         self.param_getter = AnyGetter(lambda x: x.is_parameter_exp())
@@ -31,6 +35,23 @@ class BaseEncoder(ABC):
         self.pysmt_env = pysmt_env
         self.mgr = self.pysmt_env.formula_manager
         self.optimal = optimal
+        self.ground_abstract_step = ground_abstract_step
+        grounded_problem = problem
+        self.map_back_action_instance = lambda x: x
+        if ground_abstract_step and optimal:
+            try:
+                with self.problem.environment.factory.Compiler(name=grounder_name, compilation_kind=CompilationKind.GROUNDING, problem_kind=problem.kind) as grounder:
+                    comp_res = grounder.compile(problem, CompilationKind.GROUNDING)
+                    grounded_problem = comp_res.problem
+                    self.map_back_action_instance = comp_res.map_back_action_instance
+            except UPNoSuitableEngineAvailableException:
+                warnings.warn("There are no grounders for this problem so the ground_abstract_step is disabled in this solve call", UserWarning)
+                self.ground_abstract_step = False
+
+        self.abstract_step_actions = grounded_problem.actions
+        self.abstract_step_metrics = grounded_problem.quality_metrics
+        self.fluent_mod_formulae_mapping: Dict[Any, Any] = {}
+
         self.converters = {}
 
         self.objects = {}
@@ -46,20 +67,10 @@ class BaseEncoder(ABC):
 
         self.symenc = SymbolEncoder(self.objects, self.pysmt_env)
 
-        self.touchers = {}
-        for a in self.problem.actions:
-            if isinstance(a, InstantaneousAction):
-                for e in a.effects:
-                    self.touchers.setdefault(e.fluent.fluent(), []).append((a, None, e))
-            elif isinstance(a, DurativeAction):
-                for t, le in a.effects.items():
-                    for e in le:
-                        self.touchers.setdefault(e.fluent.fluent(), []).append(
-                            (a, t, e)
-                        )
-        for t, le in self.problem.timed_effects.items():
-            for e in le:
-                self.touchers.setdefault(e.fluent.fluent(), []).append((None, t, e))
+        self.touchers = self._get_touchers(problem)
+        self.abstract_step_touchers = self.touchers
+        if ground_abstract_step:
+            self.abstract_step_touchers = self._get_touchers(grounded_problem)
 
         self._mutex_couples: Set[FrozenSet[Event]] = self._get_mutex_couples()
 
@@ -200,7 +211,7 @@ class BaseEncoder(ABC):
 
                 start_condition_after_last_concrete_step = self.mgr.LT(last_concrete_step_time, smt_tp_1)
                 condition_last_concrete_step = self.to_smt(c, h-1, w, scope=action)
-                condition_abstract_step = self.mgr.Or((self.fluent_mod(exp.fluent(), h) for exp in fve.get(c)))
+                condition_abstract_step = self.mgr.Or((self.fluent_mod(exp, action, w,h) for exp in fve.get(c)))
 
                 extra_formula = self.mgr.Implies(start_condition_after_last_concrete_step, self.mgr.Or(condition_last_concrete_step, condition_abstract_step))
                 formula = self.mgr.And(formula, extra_formula)
@@ -269,7 +280,8 @@ class BaseEncoder(ABC):
                     eq
                 )  # The fluent changes its value between step i-1 and i
                 disjunctions = []  # List of possible events that can change the value
-                for a, t, e in self.touchers.get(f, []):
+                fluent_dict = self.touchers.get(f, {})
+                for a, t, e in chain(*fluent_dict.values()):
                     if a is None:  # Timed effect
                         conj = [self.mgr.Equals(self.t(i), self.encode_problem_tp(t, h))]
                         conj.append(self.to_smt(e.condition, i-1))
@@ -477,6 +489,24 @@ class BaseEncoder(ABC):
                     mutex_couples.add(frozenset(((action_a, timing_a), (action_b, timing_b))))
         return mutex_couples
 
+    def _get_touchers(self, problem):
+        touchers = {}
+        for a in problem.actions:
+            if isinstance(a, InstantaneousAction):
+                for e in a.effects:
+                    fluent_dict = touchers.setdefault(e.fluent.fluent(), {})
+                    fluent_dict.setdefault(e.fluent, []).append((a, None, e))
+            elif isinstance(a, DurativeAction):
+                for t, le in a.effects.items():
+                    for e in le:
+                        fluent_dict = touchers.setdefault(e.fluent.fluent(), {})
+                        fluent_dict.setdefault(e.fluent, []).append((a, t, e))
+        for t, le in problem.timed_effects.items():
+            for e in le:
+                fluent_dict = touchers.setdefault(e.fluent.fluent(), {})
+                fluent_dict.setdefault(e.fluent, []).append((None, t, e))
+        return touchers
+
     def encode_mutex_constraints(self, i, j, h):
         res = []
         def encode_timing(action, timing, step):
@@ -527,17 +557,22 @@ class BaseEncoder(ABC):
         return self.mgr.LE(self.mgr.Plus(self.t(i - 1), self.mgr.Real(self.problem.epsilon)), self.t(i))
 
     @lru_cache(maxsize=None)
-    def fluent_mod(self, fluent, h):
-        # TODO For now it's implemented at lifted level.
-        # probably, implementing this for a ground fluent is more efficient
-        assert isinstance(fluent, Fluent)
+    def _fluent_mod_formula(self, fluent, fluent_exp, h):
+        assert not (self.ground_abstract_step and self.param_getter.get(fluent_exp))
         res = []
-        fluent_touchers = self.touchers.get(fluent, None)
-        if fluent_touchers is None:
+        abstract_fluent_touchers = self.abstract_step_touchers.get(fluent, None)
+        if abstract_fluent_touchers is None:
             return self.mgr.FALSE()
-        for action, timing, _ in fluent_touchers:
+
+        if self.ground_abstract_step:
+            assert fluent_exp is not None
+            fluent_touchers_gen = abstract_fluent_touchers.get(fluent_exp, [])
+        else:
+            assert fluent_exp is None
+            fluent_touchers_gen = chain(*abstract_fluent_touchers.values())
+
+        for action, timing, eff in fluent_touchers_gen:
             if action is None:
-                # TODO decomment assert (commented due problem in UP tests), assert timing.is_global()
                 til_in_abstract_step = self.mgr.GT(self.encode_problem_tp(timing, h), self.t(h-1))
                 res.append(til_in_abstract_step)
             elif timing is None:
@@ -547,14 +582,68 @@ class BaseEncoder(ABC):
             else:
                 assert isinstance(action, DurativeAction)
                 last_concrete_step_time = self.t(h-1)
-                for i in range(1, h+1):
-                    a_i = self.a(action, i)
-                    effect_time = self.encode_tp(action, timing, i)
+                concrete_action, parameters_assignment = action, {}
+                if self.ground_abstract_step:
+                    concrete_ai = self.map_back_action_instance(action())
+                    concrete_action = concrete_ai.action
+                    parameters_assignment = dict(zip(action.parameters, concrete_ai.actual_parameters))
+                    # TODO: future improvements, it would be nice to remove action parameters that do not
+                    # appear in the effect from the assignment mapping
+                for i in range(1, h):
+                    a_i = self.a(concrete_action, i)
+                    parameters_equality = []
+                    for param_exp, obj_exp in parameters_assignment.items():
+                        parameters_equality.append(self.mgr.EqualsOrIff(self.to_smt(param_exp, i, i, scope=concrete_action), self.to_smt(obj_exp, i)))
+                    p_eq = self.mgr.And(parameters_equality)
+                    effect_time = self.encode_tp(concrete_action, timing, i)
                     effect_in_abstract_step = self.mgr.GT(effect_time, last_concrete_step_time)
-                    effect_performed_in_abstract_step = self.mgr.And(a_i, effect_in_abstract_step)
+                    effect_performed_in_abstract_step = self.mgr.And(a_i, p_eq, effect_in_abstract_step)
                     res.append(effect_performed_in_abstract_step)
+                # No need to check for parameters because either the action is grounded or the fluent_mod is considered on the lifted fluent
+                a_h = self.a(action, h)
+                res.append(a_h)
 
+        fluent_mod_formula = self.mgr.Or(res)
+        naming = fluent if fluent_exp is None else fluent_exp
+        fluent_mod_var = self.mgr.FreshSymbol(template=f"phi_{h}_mod_{naming}%d")
+        self.fluent_mod_formulae_mapping[fluent_mod_formula] = fluent_mod_var
+        assert fluent_mod_var is not None
+        return fluent_mod_var
+
+    @lru_cache(maxsize=None)
+    def fluent_mod(self, fluent_exp, a, w, h):
+        p = self.param_getter.get(fluent_exp)
+        if not self.ground_abstract_step:
+            return self._fluent_mod_formula(fluent_exp.fluent(), None, h)
+        elif not p:
+            return self._fluent_mod_formula(fluent_exp.fluent(), fluent_exp, h)
+
+        res = []
+        assert a is not None and w is not None
+        # relevant parameters are computed in order to eliminate randomness in the order
+        # of the parameters given to the self._get_possible_parameters_assignments
+        relevant_parameters = tuple(filter(lambda x: x in p, (self.em.ParameterExp(ap) for ap in a.parameters)))
+        for parameters_value in self._get_possible_parameters_assignments(relevant_parameters):
+            sub_res = []
+            assignments = dict(zip(relevant_parameters, parameters_value))
+            ground_fluent_exp = fluent_exp.substitute(assignments)
+            sub_res.append(self._fluent_mod_formula(ground_fluent_exp.fluent(), ground_fluent_exp, h))
+            for param_exp, obj_exp in assignments.items():
+                sub_res.append(self.mgr.EqualsOrIff(self.to_smt(param_exp, w, w, scope=a), self.to_smt(obj_exp, w)))
+            res.append(self.mgr.And(sub_res))
         return self.mgr.Or(res)
+
+    @lru_cache(maxsize=None)
+    def _get_possible_parameters_assignments(self, parameters: Tuple[FNode, ...]) -> Tuple[Tuple[FNode, ...], ...]:
+        # Generates all the possible assignments that the given parameters have in the given problem
+        types = tuple(param.type for param in parameters)
+        domain_sizes = tuple(domain_size(self.problem, t) for t in types)
+        items_list: List[List[FNode]] = []
+        for size, type in zip(domain_sizes, types):
+            items_list.append(
+                [domain_item(self.problem, type, j) for j in range(size)]
+            )
+        return tuple(product(*items_list))
 
     def encode_abstract_instantaneous_action(self, action, h):
         assert self.optimal
@@ -565,6 +654,6 @@ class BaseEncoder(ABC):
         # Encode preconditions
         for p in action.preconditions:
             condition_concrete_last_step = self.to_smt(p, h - 1, h, scope=action)
-            condition_abstract_step = self.mgr.Or((self.fluent_mod(exp.fluent(), h) for exp in fve.get(p)))
+            condition_abstract_step = self.mgr.Or((self.fluent_mod(exp, action, h, h) for exp in fve.get(p)))
             l.append(self.mgr.Or(condition_concrete_last_step, condition_abstract_step))
         return self.mgr.Implies(a_h, self.mgr.And(l))
