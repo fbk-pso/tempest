@@ -558,7 +558,7 @@ class BaseEncoder(ABC):
 
     @lru_cache(maxsize=None)
     def _fluent_mod_formula(self, fluent, fluent_exp, h):
-        assert not (self.param_getter.get(fluent_exp) and self.ground_abstract_step)
+        assert not (self.ground_abstract_step and self.param_getter.get(fluent_exp))
         res = []
         abstract_fluent_touchers = self.abstract_step_touchers.get(fluent, None)
         if abstract_fluent_touchers is None:
