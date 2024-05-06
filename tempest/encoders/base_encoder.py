@@ -48,7 +48,6 @@ class BaseEncoder(ABC):
                 warnings.warn("There are no grounders for this problem so the ground_abstract_step is disabled in this solve call", UserWarning)
                 self.ground_abstract_step = False
 
-        self.grounded_metrics = grounded_problem.quality_metrics
         self.abstract_step_actions = grounded_problem.actions
         self.abstract_step_metrics = grounded_problem.quality_metrics
         self.fluent_mod_formulae_mapping: Dict[Any, Any] = {}
@@ -558,17 +557,18 @@ class BaseEncoder(ABC):
         return self.mgr.LE(self.mgr.Plus(self.t(i - 1), self.mgr.Real(self.problem.epsilon)), self.t(i))
 
     @lru_cache(maxsize=None)
-    def _fluent_mod_formula(self, fluent_exp, h):
-        assert isinstance(fluent_exp, FNode)
+    def _fluent_mod_formula(self, fluent, fluent_exp, h):
         assert not (self.param_getter.get(fluent_exp) and self.ground_abstract_step)
         res = []
-        abstract_fluent_touchers = self.abstract_step_touchers.get(fluent_exp.fluent(), None)
+        abstract_fluent_touchers = self.abstract_step_touchers.get(fluent, None)
         if abstract_fluent_touchers is None:
             return self.mgr.FALSE()
 
         if self.ground_abstract_step:
+            assert fluent_exp is not None
             fluent_touchers_gen = abstract_fluent_touchers.get(fluent_exp, [])
         else:
+            assert fluent_exp is None
             fluent_touchers_gen = chain(*abstract_fluent_touchers.values())
 
         for action, timing, eff in fluent_touchers_gen:
@@ -604,18 +604,20 @@ class BaseEncoder(ABC):
                 res.append(a_h)
 
         fluent_mod_formula = self.mgr.Or(res)
-        fluent_mod_var = self.fluent_mod_formulae_mapping.get(fluent_mod_formula, None)
-        if fluent_mod_var is None:
-            fluent_mod_var = self.mgr.FreshSymbol(template=f"phi_{h}_mod_{fluent_exp}%d")
-            self.fluent_mod_formulae_mapping[fluent_mod_formula] = fluent_mod_var
+        naming = fluent if fluent_exp is None else fluent_exp
+        fluent_mod_var = self.mgr.FreshSymbol(template=f"phi_{h}_mod_{naming}%d")
+        self.fluent_mod_formulae_mapping[fluent_mod_formula] = fluent_mod_var
         assert fluent_mod_var is not None
         return fluent_mod_var
 
     @lru_cache(maxsize=None)
     def fluent_mod(self, fluent_exp, a, w, h):
         p = self.param_getter.get(fluent_exp)
-        if not p or not self.ground_abstract_step:
-            return self._fluent_mod_formula(fluent_exp, h)
+        if not self.ground_abstract_step:
+            return self._fluent_mod_formula(fluent_exp.fluent(), None, h)
+        elif not p:
+            return self._fluent_mod_formula(fluent_exp.fluent(), fluent_exp, h)
+
         res = []
         assert a is not None and w is not None
         # relevant parameters are computed in order to eliminate randomness in the order
@@ -625,7 +627,7 @@ class BaseEncoder(ABC):
             sub_res = []
             assignments = dict(zip(relevant_parameters, parameters_value))
             ground_fluent_exp = fluent_exp.substitute(assignments)
-            sub_res.append(self._fluent_mod_formula(ground_fluent_exp, h))
+            sub_res.append(self._fluent_mod_formula(ground_fluent_exp.fluent(), ground_fluent_exp, h))
             for param_exp, obj_exp in assignments.items():
                 sub_res.append(self.mgr.EqualsOrIff(self.to_smt(param_exp, w, w, scope=a), self.to_smt(obj_exp, w)))
             res.append(self.mgr.And(sub_res))
