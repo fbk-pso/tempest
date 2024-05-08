@@ -3,7 +3,7 @@ from itertools import chain, product
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 from tempest.encoders.base_encoder import BaseEncoder
 from unified_planning.model import DurativeAction, InstantaneousAction, MinimizeActionCosts, FNode, Parameter
-from pysmt.optimization.goal import MinimizationGoal, MaxSMTGoal
+from pysmt.optimization.goal import MinimizationGoal, MaxSMTGoal, MinMaxGoal
 
 
 class MonolithicEncoder(BaseEncoder):
@@ -100,6 +100,10 @@ class MonolithicEncoder(BaseEncoder):
 
             res.append(self.encode_density_constraints(h))
 
+            ps = self.phi_sched(h)
+            print(ps.serialize())
+            res.append(self.phi_sched(h))
+
         res.append(self.encode_timed_goals(h, self.optimal))
 
         # Goals
@@ -120,7 +124,14 @@ class MonolithicEncoder(BaseEncoder):
         assert len(self.problem.quality_metrics) < 2, "Problem has more than one quality metric"
         metric = self.problem.quality_metrics[0] if self.problem.quality_metrics else None
         if metric is None or metric.is_minimize_makespan():
-            return MinimizationGoal(self.t(h-1)), None
+            terms = [self.t(h-1)]
+            for a in self.abstract_step_actions:
+                t_a = self.t_a(a, h)
+                if isinstance(a, InstantaneousAction):
+                    terms.append(t_a)
+                else:
+                    terms.append(self.mgr.Plus(t_a, self.dur(a, h)))
+            return MinMaxGoal(terms), None
         elif metric.is_minimize_action_costs():
             return self._get_max_smt_goal(metric, h), None
         else:
@@ -189,7 +200,7 @@ class MonolithicEncoder(BaseEncoder):
                     for s in range(1, i):
                         a_s = self.a(act, s)
                         for t in act.effects.keys():
-                            effect_at_t_i = self.mgr.Equals(self.encode_tp(act, t, s), t_i)
+                            effect_at_t_i = self.mgr.Equals(self.encode_tp(act, t, s, h), t_i)
                             sub_res.append(self.mgr.And(a_s, effect_at_t_i))
             res.append(self.mgr.Or(sub_res))
 

@@ -102,6 +102,9 @@ class BaseEncoder(ABC):
             return self.mgr.Real(-1)
         return self.symenc.t(i)
 
+    def t_a(self, a, h):
+        return self.symenc.t_a(a, h)
+
     def t_last(self):
         return self.symenc.t_last()
 
@@ -114,8 +117,8 @@ class BaseEncoder(ABC):
     def dur(self, action, i):
         return self.symenc.duration(action, i)
 
-    def encode_tp(self, action, t, i):
-        smt_t = self.t(i)
+    def encode_tp(self, action, t, i, h):
+        smt_t = self.t(i) if i < h else self.t_a(action, h)
         smt_dur = self.dur(action, i)
         if t.is_from_start():
             if t.delay != 0:
@@ -160,7 +163,7 @@ class BaseEncoder(ABC):
             assert t.is_from_start()
             smt_tp = self.encode_problem_tp(t, None)
         else:
-            smt_tp = self.encode_tp(action, t, w)
+            smt_tp = self.encode_tp(action, t, w, h)
         eff = [self.mgr.Equals(self.t(i), smt_tp)]
         for e in le:
             eff.append(self.encode_effect(action, e, i, w))
@@ -175,8 +178,8 @@ class BaseEncoder(ABC):
             smt_tp_1 = self.encode_problem_tp(it.lower, h)
             smt_tp_2 = self.encode_problem_tp(it.upper, h)
         else:
-            smt_tp_1 = self.encode_tp(action, it.lower, w)
-            smt_tp_2 = self.encode_tp(action, it.upper, w)
+            smt_tp_1 = self.encode_tp(action, it.lower, w, h)
+            smt_tp_2 = self.encode_tp(action, it.upper, w, h)
 
         non_empty_interval_operand = self.mgr.GE
         if it.is_left_open() or it.is_right_open():
@@ -321,7 +324,7 @@ class BaseEncoder(ABC):
                             conj = [self.a(a, w)]
                             conj.append(self.to_smt(e.condition, i-1, w, scope=a))
                             conj.append(
-                                self.mgr.Equals(self.t(i), self.encode_tp(a, t, w))
+                                self.mgr.Equals(self.t(i), self.encode_tp(a, t, w, h))
                             )
                             trivially_false = False
                             for z, p in enumerate(e.fluent.args):
@@ -515,7 +518,7 @@ class BaseEncoder(ABC):
                 return self.t(step)
             elif isinstance(action, DurativeAction):
                 assert not timing.is_global()
-                return self.encode_tp(action, timing, step)
+                return self.encode_tp(action, timing, step, h)
             else:
                 # assert action is None and timing.is_global() -> It is commented due to a problem in the UnifiedPlanning test-cases, where some tils have StartTiming instead of GlobalStartTiming
                 return self.encode_problem_tp(timing, h)
@@ -595,7 +598,7 @@ class BaseEncoder(ABC):
                     for param_exp, obj_exp in parameters_assignment.items():
                         parameters_equality.append(self.mgr.EqualsOrIff(self.to_smt(param_exp, i, i, scope=concrete_action), self.to_smt(obj_exp, i)))
                     p_eq = self.mgr.And(parameters_equality)
-                    effect_time = self.encode_tp(concrete_action, timing, i)
+                    effect_time = self.encode_tp(concrete_action, timing, i, h)
                     effect_in_abstract_step = self.mgr.GT(effect_time, last_concrete_step_time)
                     effect_performed_in_abstract_step = self.mgr.And(a_i, p_eq, effect_in_abstract_step)
                     res.append(effect_performed_in_abstract_step)
@@ -657,3 +660,140 @@ class BaseEncoder(ABC):
             condition_abstract_step = self.mgr.Or((self.fluent_mod(exp, action, h, h) for exp in fve.get(p)))
             l.append(self.mgr.Or(condition_concrete_last_step, condition_abstract_step))
         return self.mgr.Implies(a_h, self.mgr.And(l))
+
+    def phi_sched(self, h):
+        res = []
+
+        for interval, goals in self.problem.timed_goals.items():
+            timing = interval.lower
+            interval_in_abstract_step = self.mgr.GT(self.encode_problem_tp(timing, h), self.t(h-1))
+            empty_interval_operand = self.mgr.LE
+            if interval.is_left_open() or interval.is_right_open():
+                empty_interval_operand = self.mgr.LT
+            interval_not_empty = empty_interval_operand(self.encode_problem_tp(interval.lower, h), self.encode_problem_tp(interval.upper, h))
+            for goal in goals:
+                goal_not_satisfied = self.mgr.Not(self.to_smt(goal, h-1))
+                res.append(self.mgr.Implies(
+                    self.mgr.And(goal_not_satisfied, interval_in_abstract_step, interval_not_empty),
+                    self._phi_sched_parametrized_formula(goal, timing, None, None, h)
+                ))
+                # DEBUG
+                print(f"\n{goal}: {self.mgr.And(goal_not_satisfied, interval_in_abstract_step, interval_not_empty).serialize()} IMPLIES {self._phi_sched_parametrized_formula(goal, timing, None, None, h).serialize()}")
+
+        for a in filter(lambda a: isinstance(a, DurativeAction), self.problem.actions):
+            for s in range(1, h):
+                sub_res = []
+                for interval, cl in a.conditions.items():
+                    timing = interval.lower
+                    interval_in_abstract_step = self.mgr.GT(self.encode_tp(a, timing, s, h), self.t(h-1))
+                    empty_interval_operand = self.mgr.LE
+                    if interval.is_left_open() or interval.is_right_open():
+                        empty_interval_operand = self.mgr.LT
+                    interval_not_empty = empty_interval_operand(self.encode_tp(a, interval.lower, s, h), self.encode_tp(a, interval.upper, s, h))
+                    for cond in cl:
+                        cond_not_satisfied = self.mgr.Not(self.to_smt(cond, h-1, s, scope=a))
+                        sub_res.append(self.mgr.Implies(
+                            self.mgr.And(cond_not_satisfied, interval_in_abstract_step, interval_not_empty),
+                            self._phi_sched_parametrized_formula(cond, timing, a, s, h)
+                        ))
+                res.append(self.mgr.Implies(self.a(a, s), self.mgr.And(sub_res)))
+                # DEBUG
+                print(f"\n{a.name}: {self.a(a, s).serialize()} IMPLIES {self.mgr.And(sub_res).serialize()}")
+
+        for a in self.abstract_step_actions:
+            assert self.problem.epsilon > 0
+            res.append(self.mgr.LE(self.mgr.Plus(self.t(h-1), self.mgr.Real(self.problem.epsilon)), self.t_a(a, h)))
+            if isinstance(a, InstantaneousAction):
+                pass # TODO
+            else:
+                assert isinstance(a, DurativeAction)
+                sub_res = []
+                for interval, cl in a.conditions.items():
+                    timing = interval.lower
+                    empty_interval_operand = self.mgr.LE
+                    if interval.is_left_open() or interval.is_right_open():
+                        empty_interval_operand = self.mgr.LT
+                    interval_not_empty = empty_interval_operand(self.encode_tp(a, interval.lower, h, h), self.encode_tp(a, interval.upper, h, h))
+                    for cond in cl:
+                        cond_not_satisfied = self.mgr.Not(self.to_smt(cond, h-1))
+                        sub_res.append(self.mgr.Implies(
+                            self.mgr.And(cond_not_satisfied, interval_not_empty),
+                            self._phi_sched_parametrized_formula(cond, timing, a, h, h)
+                        ))
+                res.append(self.mgr.Implies(self.a(a, h), self.mgr.And(sub_res)))
+                # DEBUG
+                print(f"\n{a.name}: {self.a(a, s).serialize()} IMPLIES {self.mgr.And(sub_res).serialize()}")
+        # TODO check completeness
+        return self.mgr.And(res)
+
+    def _phi_sched_parametrized_formula(self, phi, t, a, w, h):
+        fve = self.problem.environment.free_vars_extractor
+        res = []
+        if a is None:
+            assert w is None
+            phi_time = self.encode_problem_tp(t, h)
+        else:
+            assert a is not None and w is not None
+            phi_time = self.encode_tp(a, t, w, h)
+
+        for fluent_exp in fve.get(phi):
+            fp = self.param_getter.get(fluent_exp)
+            fluent_params = tuple()
+            if a is not None:
+                fluent_params = tuple(filter(lambda x: x in fp, a.parameters))
+            assert not (fluent_params and a is None)
+            if not fluent_params or not self.ground_abstract_step:
+                res.append(self.mgr.And(self.fluent_mod(fluent_exp, a, w, h), self._phi_sched_formula(phi_time, fluent_exp, h)))
+            else:
+                assert w < h, "parameters should come only from actions started in concrete steps"
+                for parameter_assignment in self._get_possible_parameters_assignments(fluent_params):
+                    assignments = dict(zip(fluent_params, parameter_assignment))
+                    p_eq = []
+                    for param_exp, obj_exp in assignments.items():
+                        p_eq.append(self.mgr.EqualsOrIff(self.to_smt(param_exp, w, w, scope=a), self.to_smt(obj_exp, w)))
+                    parameters_equality = self.mgr.And(p_eq)
+                    ground_fluent_exp = fluent_exp.substitute(assignments)
+                    res.append(self.mgr.And(parameters_equality, self.fluent_mod(ground_fluent_exp, a, w, h), self._phi_sched_formula(phi_time, ground_fluent_exp, h)))
+
+        return self.mgr.Or(res)
+
+    def _phi_sched_formula(self, phi_time, fluent_exp, h):
+        res = []
+        last_t = self.t(h-1)
+        if self.ground_abstract_step:
+            abstract_touchers = self.abstract_step_touchers.get(fluent_exp.fluent, {})
+        else:
+            abstract_touchers_dict = self.abstract_step_touchers.get(fluent_exp.fluent, {})
+            abstract_touchers = chain(*abstract_touchers_dict.values())
+        for b, t, e in abstract_touchers:
+            if isinstance(b, DurativeAction):
+                # if the action is durative, it might have started in the concrete steps and still
+                # be relevant in the abstract steps (for example it still has to end)
+                # TODO possible improvements?
+                parameters_assignment = {}
+                if self.ground_abstract_step:
+                    lifted_ai = self.map_back_action_instance(b())
+                    lifted_a, params_a = lifted_ai.action, lifted_ai.actual_parameters
+                    parameters_assignment = dict(zip(lifted_a.parameters, params_a))
+                for k in range(1, h):
+                    b_k_formula = [self.a(b, k)]
+                    if self.ground_abstract_step:
+                        parameters_equality = []
+                        for param_exp, obj_exp in parameters_assignment.items():
+                            parameters_equality.append(self.mgr.EqualsOrIff(self.to_smt(param_exp, k, k, scope=lifted_a), self.to_smt(obj_exp, k)))
+                        b_k_formula.append(self.mgr.And(parameters_equality))
+                    e_k_time = self.encode_tp(b, t, k, h)
+                    b_k_formula.append(self.mgr.LT(last_t, e_k_time))
+                    b_k_formula.append(self.mgr.LE(e_k_time, phi_time))
+                    res.append(self.mgr.And(b_k_formula))
+
+            h_step_formula = []
+            if b is not None: # Instantaneous or Durative action
+                h_step_formula = [self.a(b, h)]
+                e_h_time = self.t_a(b, h) if t is None else self.encode_tp(b, t, h, h)
+            else: # TIL
+                e_h_time = self.encode_problem_tp(t, h)
+            h_step_formula.append(self.mgr.LT(last_t, e_h_time))
+            h_step_formula.append(self.mgr.LE(e_h_time, phi_time))
+            res.append(self.mgr.And(h_step_formula))
+        return self.mgr.Or(res)

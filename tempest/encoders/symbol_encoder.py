@@ -15,6 +15,10 @@ class SymbolEncoder:
         return self.mgr.Symbol(f"t@{i}", pysmt.shortcuts.REAL)
 
     @lru_cache(maxsize=None)
+    def t_a(self, a, h):
+        return self.mgr.Symbol(f"t{a.name}@{h}", pysmt.shortcuts.REAL)
+
+    @lru_cache(maxsize=None)
     def t_last(self):
         return self.mgr.Symbol("t@last", pysmt.shortcuts.REAL)
 
