@@ -122,10 +122,10 @@ class TempestEngine(_BaseEngine):
 
         modify_horizon = lambda x: x
         if self.incremental:
-            encoder = IncrementalEncoder(problem, pysmt_env=pysmt_env)
+            encoder = IncrementalEncoder(problem, pysmt_env=pysmt_env, epsilon=problem.epsilon)
             modify_horizon = lambda x: x-1
         else:
-            encoder = MonolithicEncoder(problem, pysmt_env=pysmt_env)
+            encoder = MonolithicEncoder(problem, pysmt_env=pysmt_env, epsilon=problem.epsilon)
 
         start_time = time()
         is_in_timeout: bool = False
@@ -159,7 +159,6 @@ class TempestEngine(_BaseEngine):
                         is_in_timeout = True
                         break
 
-
         status = PlanGenerationResultStatus.TIMEOUT if is_in_timeout else PlanGenerationResultStatus.UNSOLVABLE_INCOMPLETELY
 
         return PlanGenerationResult(
@@ -191,6 +190,10 @@ class TempestOptimalEngine(_BaseEngine):
         supported_kind.set_actions_cost_kind("STATIC_FLUENTS_IN_ACTIONS_COST")
         supported_kind.set_actions_cost_kind("INT_NUMBERS_IN_ACTIONS_COST")
         supported_kind.set_actions_cost_kind("REAL_NUMBERS_IN_ACTIONS_COST")
+        # These kind are removed due to the grounding of expressions checked to be True in the
+        # last concrete step
+        supported_kind.unset_parameters("UNBOUNDED_INT_ACTION_PARAMETERS")
+        supported_kind.unset_parameters("REAL_ACTION_PARAMETERS")
         return supported_kind
 
     @staticmethod
@@ -217,11 +220,15 @@ class TempestOptimalEngine(_BaseEngine):
             warnings.warn("TemPEST does not support custom heuristics.", UserWarning)
         pysmt_env = pysmt.environment.Environment()
 
+        epsilon = problem.epsilon
+        if epsilon is None:
+            epsilon = Fraction(1, 100)
+
         modify_horizon = lambda x: x
         if self.incremental:
             raise NotImplementedError()
         else:
-            encoder = MonolithicEncoder(problem, pysmt_env=pysmt_env, optimal=True,
+            encoder = MonolithicEncoder(problem, pysmt_env=pysmt_env, epsilon=epsilon, optimal=True,
                 ground_abstract_step=self.ground_abstract_step, grounder_name=self.grounder_name)
 
         start_time = time()
@@ -232,8 +239,6 @@ class TempestOptimalEngine(_BaseEngine):
             if step_zero is not None:
                 omt.add_assertion(step_zero)
             h = 2
-            if problem.epsilon is None:
-                problem.epsilon = Fraction(1, 100)
             while self.horizon is None or h <= self.horizon:
                 formula, assumptions = encoder.encode_step(modify_horizon(h))
                 if formula is not None:
