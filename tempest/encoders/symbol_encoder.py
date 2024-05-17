@@ -2,6 +2,7 @@ from functools import lru_cache
 from typing import List, Optional
 
 import pysmt
+import pysmt.environment
 from unified_planning.model import Action, DurativeAction, Effect, Fluent, FNode, Object, Parameter, Type
 
 
@@ -16,15 +17,15 @@ class SymbolEncoder:
 
     @lru_cache(maxsize=None)
     def t(self, i: int):
-        return self.mgr.Symbol(f"t@{i}", pysmt.shortcuts.REAL)
+        return self.mgr.Symbol(f"t@{i}", pysmt.typing.REAL)
 
     @lru_cache(maxsize=None)
     def t_a(self, a: Action, h: int):
-        return self.mgr.Symbol(f"t{a.name}@{h}", pysmt.shortcuts.REAL)
+        return self.mgr.Symbol(f"t{a.name}@{h}", pysmt.typing.REAL)
 
     @lru_cache(maxsize=None)
     def t_last(self):
-        return self.mgr.Symbol("t@last", pysmt.shortcuts.REAL)
+        return self.mgr.Symbol("t@last", pysmt.typing.REAL)
 
     @lru_cache(maxsize=None)
     def action(self, action: Action, i: int):
@@ -40,7 +41,7 @@ class SymbolEncoder:
 
     @lru_cache(maxsize=None)
     def duration(self, action: DurativeAction, i: int):
-        return self.mgr.Symbol(f"dur_{action.name}@{i}", pysmt.shortcuts.REAL)
+        return self.mgr.Symbol(f"dur_{action.name}@{i}", pysmt.typing.REAL)
 
     @lru_cache(maxsize=None)
     def fluent(self, fluent: Fluent, args: List[FNode], i: int):
@@ -72,10 +73,10 @@ class SymbolEncoder:
 
     def type_to_smt(self, type: Type):
         if type.is_bool_type():
-            return pysmt.shortcuts.BOOL, None, None
+            return pysmt.typing.BOOL, None, None
         elif type.is_int_type() or type.is_real_type():
             lb, ub = type.lower_bound, type.upper_bound
-            return pysmt.shortcuts.REAL, lb, ub
+            return pysmt.typing.REAL, lb, ub
         elif type.is_user_type():
             lb = None
             for obj, i in self.objects.items():
@@ -83,6 +84,6 @@ class SymbolEncoder:
                     if lb is None:
                         lb = i
                     ub = i
-            return pysmt.shortcuts.REAL, lb, ub
+            return pysmt.typing.REAL, lb, ub
         else:
             raise NotImplementedError(f"Unknown type in conversion: {type}")
