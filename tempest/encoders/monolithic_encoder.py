@@ -1,9 +1,9 @@
 from functools import lru_cache
-from itertools import chain, product
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from itertools import chain
+from typing import Any, Dict, List, Optional, Tuple
 from tempest.encoders.base_encoder import BaseEncoder
-from unified_planning.model import DurativeAction, InstantaneousAction, MinimizeActionCosts, FNode, Parameter, Action
-from pysmt.optimization.goal import MinimizationGoal, MaxSMTGoal, MinMaxGoal
+from unified_planning.model import DurativeAction, InstantaneousAction, MinimizeActionCosts, FNode, Action, Timing
+from pysmt.optimization.goal import MaxSMTGoal, MinMaxGoal
 
 
 class MonolithicEncoder(BaseEncoder):
@@ -107,7 +107,7 @@ class MonolithicEncoder(BaseEncoder):
         for g in self.problem.goals:
             goal_formula = self.to_smt(g, h - 1)
             if self.optimal:
-                goal_formula = self.mgr.Or(chain([goal_formula], (self.fluent_mod(exp, None, None, h) for exp in self._get_sorted_fve(g))))
+                goal_formula = self.mgr.Or(chain([goal_formula], (self.fluent_mod(exp, None, None, h) for exp in self._get_sorted_free_vars(g))))
             res.append(goal_formula)
 
         # fluent_mod variables
@@ -120,8 +120,12 @@ class MonolithicEncoder(BaseEncoder):
         assert len(self.problem.quality_metrics) < 2, "Problem has more than one quality metric"
         metric = self.problem.quality_metrics[0] if self.problem.quality_metrics else None
         if metric is None or metric.is_minimize_makespan():
-            # TODO add the time of last timed effect
             terms = [self.t(h-1)]
+            timed_goals_timings = chain(*map(lambda x: (x.lower, x.upper), self.problem.timed_goals.keys()))
+            problem_timings = chain(timed_goals_timings, self.problem.timed_effects.keys())
+            for timing in filter(lambda x: x.is_from_start(), problem_timings):
+                assert isinstance(timing, Timing)
+                terms.append(self.encode_problem_tp(timing, h))
             for a in self.abstract_step_actions:
                 t_a = self.t_a(a, h)
                 if isinstance(a, InstantaneousAction):

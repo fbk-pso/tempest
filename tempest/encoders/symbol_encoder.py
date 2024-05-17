@@ -1,10 +1,8 @@
 from functools import lru_cache
-import pysmt
 from typing import List, Optional
 
-import pysmt.environment
-from unified_planning.model import Action, DurativeAction, Effect, Fluent, FNode, Object, Parameter, Type
 import pysmt
+from unified_planning.model import Action, DurativeAction, Effect, Fluent, FNode, Object, Parameter, Type
 
 
 class SymbolEncoder:

@@ -231,7 +231,7 @@ class BaseEncoder(ABC):
                         condition_last_concrete_step_clauses.append(self.to_smt(c.substitute(subs), h-1))
                     condition_last_concrete_step = self.mgr.Or(condition_last_concrete_step_clauses)
 
-                condition_abstract_step = self.mgr.Or((self.fluent_mod(exp, action, w,h) for exp in self._get_sorted_fve(c)))
+                condition_abstract_step = self.mgr.Or((self.fluent_mod(exp, action, w,h) for exp in self._get_sorted_free_vars(c)))
 
                 extra_formula = self.mgr.Implies(start_condition_after_last_concrete_step, self.mgr.Or(condition_last_concrete_step, condition_abstract_step))
                 formula = self.mgr.And(formula, extra_formula)
@@ -373,11 +373,11 @@ class BaseEncoder(ABC):
 
     def is_mutex(self, a_precond: Iterable[FNode], a_effects: Iterable[Effect], b_precond: Iterable[FNode], b_effects: Iterable[Effect]):
 
-        a_p = set(x.fluent() for p in a_precond for x in self._get_sorted_fve(p))
-        b_p = set(x.fluent() for p in b_precond for x in self._get_sorted_fve(p))
+        a_p = set(x.fluent() for p in a_precond for x in self._get_sorted_free_vars(p))
+        b_p = set(x.fluent() for p in b_precond for x in self._get_sorted_free_vars(p))
 
         def get_red_fluents(effect):
-            for x in chain(*map(self._get_sorted_fve, (effect.condition, effect.fluent, effect.value))):
+            for x in chain(*map(self._get_sorted_free_vars, (effect.condition, effect.fluent, effect.value))):
                 yield x.fluent()
 
         a_e = set()
@@ -681,7 +681,7 @@ class BaseEncoder(ABC):
                     condition_last_concrete_step_clauses.append(self.to_smt(p.substitute(subs), h-1))
                 condition_last_concrete_step = self.mgr.Or(condition_last_concrete_step_clauses)
 
-            condition_abstract_step = self.mgr.Or((self.fluent_mod(exp, action, h, h) for exp in self._get_sorted_fve(p)))
+            condition_abstract_step = self.mgr.Or((self.fluent_mod(exp, action, h, h) for exp in self._get_sorted_free_vars(p)))
             l.append(self.mgr.Or(condition_last_concrete_step, condition_abstract_step))
         return self.mgr.Implies(a_h, self.mgr.And(l))
 
@@ -764,7 +764,6 @@ class BaseEncoder(ABC):
                         ))
                 res.append(self.mgr.Implies(self.a(a, h), self.mgr.And(sub_res)))
 
-        # TODO check completeness
         return self.mgr.And(res)
 
     def _phi_sched_parametrized_formula(self, phi: FNode, t: Optional[Timing], a: Optional[Action], w: Optional[int], h: int):
@@ -779,7 +778,7 @@ class BaseEncoder(ABC):
             assert isinstance(a, DurativeAction) and w is not None
             phi_time = self.encode_tp(a, t, w, h)
 
-        for fluent_exp in self._get_sorted_fve(phi):
+        for fluent_exp in self._get_sorted_free_vars(phi):
             fluent_params = self._get_sorted_parameters(fluent_exp, a)
             if not fluent_params or not self.ground_abstract_step:
                 res.append(self.mgr.And(self.fluent_mod(fluent_exp, a, w, h), self._phi_sched_formula(phi_time, fluent_exp, h)))
@@ -846,7 +845,7 @@ class BaseEncoder(ABC):
         param_exps = map(self.em.ParameterExp, action.parameters)
         return tuple(filter(lambda x: x in params, param_exps))
 
-    def _get_sorted_fve(self, exp: FNode) -> Tuple[FNode, ...]:
+    def _get_sorted_free_vars(self, exp: FNode) -> Tuple[FNode, ...]:
         fve = self.problem.environment.free_vars_extractor
         fluents = fve.get(exp)
         return tuple(sorted(fluents, key=str))
