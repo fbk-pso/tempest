@@ -1,0 +1,19 @@
+name: CI-on-push
+
+on:
+  push
+
+jobs:
+  test-tempest:
+    uses: ./.github/workflows/test_specific_engine.yml
+
+    with:
+      engine-name: "tempest"
+      engine-class: TempestEngine
+
+  test-tempest-non-incremental:
+    uses: ./.github/workflows/test_specific_engine.yml
+
+    with:
+      engine-name: "tempest-ni"
+      engine-class: TempestNonIncremental
