@@ -17,3 +17,31 @@ jobs:
     with:
       engine-name: "tempest-ni"
       engine-class: TempestNonIncremental
+
+  test-tempest-optimal:
+    uses: ./.github/workflows/test_specific_engine.yml
+
+    with:
+      engine-name: "tempest-opt"
+      engine-class: TempestOptimalEngine
+
+  test-tempest-optimal-lifted-abstract-step:
+    uses: ./.github/workflows/test_specific_engine.yml
+
+    with:
+      engine-name: "tempest-las"
+      engine-class: TempestLiftedAbstractStep
+
+  test-tempest-optimal-only-omt:
+    uses: ./.github/workflows/test_specific_engine.yml
+
+    with:
+      engine-name: "tempest-oomt"
+      engine-class: TempestOnlyOMT
+
+  test-tempest-optimal-lifted-abstract-step-only-omt:
+    uses: ./.github/workflows/test_specific_engine.yml
+
+    with:
+      engine-name: "tempest-las-oomt"
+      engine-class: TempestLiftedAbstractStepOnlyOMT
