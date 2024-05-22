@@ -224,13 +224,13 @@ class TempestOptimalEngine(_BaseEngine):
         is_in_timeout: bool = False
         pysmt_env = pysmt.environment.Environment()
 
+        epsilon = problem.epsilon
+        if epsilon is None:
+            epsilon = Fraction(1, 100)
+
         if self.sat_before_opt:
             # Find the first step where the problem has a plan using SMT
             # and then start using OMT from that step
-
-            epsilon = problem.epsilon
-            if epsilon is None:
-                epsilon = Fraction(1, 100)
 
             modify_horizon = lambda x: x
             if self.incremental:
