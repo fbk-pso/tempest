@@ -221,15 +221,7 @@ class BaseEncoder(ABC):
 
                 start_condition_after_last_concrete_step = self.mgr.LT(last_concrete_step_time, smt_tp_1)
 
-                p = self._get_sorted_parameters(c, action)
-                if w != h or not p:
-                    condition_last_concrete_step = self.to_smt(c, h-1, w, action)
-                else:
-                    condition_last_concrete_step_clauses = []
-                    for p_ass in self._get_possible_parameters_assignments(p):
-                        subs = dict(zip(p, p_ass))
-                        condition_last_concrete_step_clauses.append(self.to_smt(c.substitute(subs), h-1))
-                    condition_last_concrete_step = self.mgr.Or(condition_last_concrete_step_clauses)
+                condition_last_concrete_step = self.to_smt(c, h-1, w, action)
 
                 condition_abstract_step = self.mgr.Or((self.fluent_mod(exp, action, w,h) for exp in self._get_sorted_free_vars(c)))
 
@@ -670,23 +662,19 @@ class BaseEncoder(ABC):
 
         # Encode preconditions
         for p in action.preconditions:
-            params = self._get_sorted_parameters(p, action)
-            if not params:
-                condition_last_concrete_step = self.to_smt(p, h-1, h, scope=action)
-            else:
-                condition_last_concrete_step_clauses = []
-                for p_ass in self._get_possible_parameters_assignments(params):
-                    subs = dict(zip(params, p_ass))
-                    condition_last_concrete_step_clauses.append(self.to_smt(p.substitute(subs), h-1))
-                condition_last_concrete_step = self.mgr.Or(condition_last_concrete_step_clauses)
+            condition_last_concrete_step = self.to_smt(p, h-1, h, scope=action)
 
             condition_abstract_step = self.mgr.Or((self.fluent_mod(exp, action, h, h) for exp in self._get_sorted_free_vars(p)))
             l.append(self.mgr.Or(condition_last_concrete_step, condition_abstract_step))
         return self.mgr.Implies(a_h, self.mgr.And(l))
 
     def phi_sched(self, h: int):
+        # This method handles conditions that are in the abstract step. Those conditions
+        # either need to be True in the step h-1 OR an effect touching the condition must
+        # be scheduled before the condition time
         res = []
 
+        # Handles timed_goals that are scheduled after t(h-1)
         for interval, goals in self.problem.timed_goals.items():
             timing = interval.lower
             interval_in_abstract_step = self.mgr.GT(self.encode_problem_tp(timing, h), self.t(h-1))
@@ -701,6 +689,8 @@ class BaseEncoder(ABC):
                     self._phi_sched_parametrized_formula(goal, timing, None, None, h)
                 ))
 
+        # Handles Durative Actions that started in a concrete step but still have to end
+        # in the abstract step
         for a in filter(lambda a: isinstance(a, DurativeAction), self.problem.actions):
             for s in range(1, h):
                 sub_res = []
@@ -719,25 +709,16 @@ class BaseEncoder(ABC):
                         ))
                 res.append(self.mgr.Implies(self.a(a, s), self.mgr.And(sub_res)))
 
+        # Handles all the actions in the abstract step
         for a in self.abstract_step_actions:
             assert self.epsilon > 0
-            res.append(self.mgr.LE(self.mgr.Plus(self.t(h-1), self.mgr.Real(self.epsilon)), self.t_a(a, h)))
+            sub_res = []
+            sub_res.append(self.mgr.LE(self.mgr.Plus(self.t(h-1), self.mgr.Real(self.epsilon)), self.t_a(a, h)))
             if isinstance(a, InstantaneousAction):
-                sub_res = []
+                timing = None
+                interval_not_empty = self.mgr.TRUE()
                 for cond in a.preconditions:
-                    cond_params = self._get_sorted_parameters(cond, a)
-                    if not cond_params:
-                        cond_not_satisfied = self.mgr.Not(self.to_smt(cond, h-1))
-                    else:
-                        cond_not_satisfied_clauses = []
-                        for p_ass in self._get_possible_parameters_assignments(cond_params):
-                            subs = dict(zip(cond_params, p_ass))
-                            cond_not_satisfied_clauses.append(self.mgr.Not(self.to_smt(cond.substitute(subs), h-1)))
-                        cond_not_satisfied = self.mgr.And(cond_not_satisfied_clauses)
-                    sub_res.append(self.mgr.Implies(
-                        cond_not_satisfied,
-                        self._phi_sched_parametrized_formula(cond, None, a, h, h)
-                    ))
+                    sub_res.append(self._action_condition_phi_sched(a, cond, h, timing, interval_not_empty))
             else:
                 assert isinstance(a, DurativeAction)
                 sub_res = []
@@ -748,22 +729,18 @@ class BaseEncoder(ABC):
                         empty_interval_operand = self.mgr.LT
                     interval_not_empty = empty_interval_operand(self.encode_tp(a, interval.lower, h, h), self.encode_tp(a, interval.upper, h, h))
                     for cond in cl:
-                        cond_params = self._get_sorted_parameters(cond, a)
-                        if not cond_params:
-                            cond_not_satisfied = self.mgr.Not(self.to_smt(cond, h-1))
-                        else:
-                            cond_not_satisfied_clauses = []
-                            for p_ass in self._get_possible_parameters_assignments(cond_params):
-                                subs = dict(zip(cond_params, p_ass))
-                                cond_not_satisfied_clauses.append(self.mgr.Not(self.to_smt(cond.substitute(subs), h-1)))
-                            cond_not_satisfied = self.mgr.And(cond_not_satisfied_clauses)
-                        sub_res.append(self.mgr.Implies(
-                            self.mgr.And(cond_not_satisfied, interval_not_empty),
-                            self._phi_sched_parametrized_formula(cond, timing, a, h, h)
-                        ))
-                res.append(self.mgr.Implies(self.a(a, h), self.mgr.And(sub_res)))
+                        sub_res.append(self._action_condition_phi_sched(a, cond, h, timing, interval_not_empty))
+            res.append(self.mgr.Implies(self.a(a, h), self.mgr.And(sub_res)))
 
         return self.mgr.And(res)
+
+    def _action_condition_phi_sched(self, a: Action, cond: FNode, h: int, timing: Optional[Timing], interval_not_empty: Any):
+        cond_not_satisfied = self.mgr.Not(self.to_smt(cond, h-1))
+
+        return self.mgr.Implies(
+                    self.mgr.And(cond_not_satisfied, interval_not_empty),
+                    self._phi_sched_parametrized_formula(cond, timing, a, h, h)
+                )
 
     def _phi_sched_parametrized_formula(self, phi: FNode, t: Optional[Timing], a: Optional[Action], w: Optional[int], h: int):
         res = []
@@ -821,7 +798,8 @@ class BaseEncoder(ABC):
                             parameters_equality.append(self.mgr.EqualsOrIff(self.to_smt(param_exp, k, k, scope=lifted_a), self.to_smt(obj_exp, k)))
                         b_k_formula.append(self.mgr.And(parameters_equality))
                     e_k_time = self.encode_tp(b, t, k, h)
-                    b_k_formula.append(self.mgr.LT(last_t, e_k_time))
+                    # b_k_formula.append(self.mgr.LT(last_t, e_k_time)) #TODO THIS FIX WITH THE LINE BELOW IS NOT 100% CORRECT, DISCUSS
+                    b_k_formula.append(self.mgr.LE(self.mgr.Plus(last_t, self.mgr.Real(self.epsilon)), e_k_time))
                     b_k_formula.append(self.mgr.LE(e_k_time, phi_time))
                     res.append(self.mgr.And(b_k_formula))
 
@@ -831,7 +809,8 @@ class BaseEncoder(ABC):
                 e_h_time = self.t_a(b, h) if t is None else self.encode_tp(b, t, h, h)
             else: # TIL
                 e_h_time = self.encode_problem_tp(t, h)
-            h_step_formula.append(self.mgr.LT(last_t, e_h_time))
+            # h_step_formula.append(self.mgr.LT(last_t, e_h_time)) #TODO THIS FIX WITH THE LINE BELOW IS NOT 100% CORRECT, DISCUSS
+            h_step_formula.append(self.mgr.LE(self.mgr.Plus(last_t, self.mgr.Real(self.epsilon)), e_h_time))
             h_step_formula.append(self.mgr.LE(e_h_time, phi_time))
             res.append(self.mgr.And(h_step_formula))
         return self.mgr.Or(res)
