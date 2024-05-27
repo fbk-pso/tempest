@@ -713,12 +713,14 @@ class BaseEncoder(ABC):
         for a in self.abstract_step_actions:
             assert self.epsilon > 0
             sub_res = []
-            sub_res.append(self.mgr.LE(self.mgr.Plus(self.t(h-1), self.mgr.Real(self.epsilon)), self.t_a(a, h)))
+            sub_res.append(self.mgr.LE(self.mgr.Plus(self.t(h-1), self.mgr.Real(self.epsilon)), self.t_a(a, h))) #TODO understand if this is correct
             if isinstance(a, InstantaneousAction):
-                timing = None
-                interval_not_empty = self.mgr.TRUE()
                 for cond in a.preconditions:
-                    sub_res.append(self._action_condition_phi_sched(a, cond, h, timing, interval_not_empty))
+                    cond_not_satisfied = self.mgr.Not(self.to_smt(cond, h-1, h, a))
+                    sub_res.append(self.mgr.Implies(
+                        cond_not_satisfied,
+                        self._phi_sched_parametrized_formula(cond, None, a, h, h)
+                    ))
             else:
                 assert isinstance(a, DurativeAction)
                 sub_res = []
@@ -729,7 +731,11 @@ class BaseEncoder(ABC):
                         empty_interval_operand = self.mgr.LT
                     interval_not_empty = empty_interval_operand(self.encode_tp(a, interval.lower, h, h), self.encode_tp(a, interval.upper, h, h))
                     for cond in cl:
-                        sub_res.append(self._action_condition_phi_sched(a, cond, h, timing, interval_not_empty))
+                        cond_not_satisfied = self.mgr.Not(self.to_smt(cond, h-1, h, a))
+                        sub_res.append(self.mgr.Implies(
+                            self.mgr.And(cond_not_satisfied, interval_not_empty),
+                            self._phi_sched_parametrized_formula(cond, timing, a, h, h)
+                        ))
             res.append(self.mgr.Implies(self.a(a, h), self.mgr.And(sub_res)))
 
         return self.mgr.And(res)
@@ -738,9 +744,9 @@ class BaseEncoder(ABC):
         cond_not_satisfied = self.mgr.Not(self.to_smt(cond, h-1))
 
         return self.mgr.Implies(
-                    self.mgr.And(cond_not_satisfied, interval_not_empty),
-                    self._phi_sched_parametrized_formula(cond, timing, a, h, h)
-                )
+            self.mgr.And(cond_not_satisfied, interval_not_empty),
+            self._phi_sched_parametrized_formula(cond, timing, a, h, h)
+        )
 
     def _phi_sched_parametrized_formula(self, phi: FNode, t: Optional[Timing], a: Optional[Action], w: Optional[int], h: int):
         res = []
