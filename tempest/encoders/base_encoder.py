@@ -539,7 +539,15 @@ class BaseEncoder(ABC):
                 continue
             time_of_a = encode_timing(action_a, timing_a, i)
             time_of_b = encode_timing(action_b, timing_b, j)
-            same_timing = self.mgr.Equals(time_of_a, time_of_b)
+            if self.epsilon is None:
+                same_timing = self.mgr.Equals(time_of_a, time_of_b)
+            else:
+                # If epsilon is defined, 2 mutex events don't have the same timing if their distance is > epsilon
+                assert self.epsilon > 0
+                eps = self.mgr.Real(self.epsilon)
+                a_b = self.LT(self.mgr.Minus(time_of_a, time_of_b), eps)
+                b_a = self.LT(self.mgr.Minus(time_of_b, time_of_a), eps)
+                same_timing = self.mgr.And(a_b, b_a)
 
             if action_a is None:
                 assert action_b is not None
@@ -562,10 +570,7 @@ class BaseEncoder(ABC):
         if i == 1:
             # First valid step must be >= 0
             return self.mgr.LE(self.mgr.Real(0), self.t(i))
-        if self.epsilon is None:
-            return self.mgr.LT(self.t(i - 1), self.t(i))
-        assert self.epsilon > 0
-        return self.mgr.LE(self.mgr.Plus(self.t(i - 1), self.mgr.Real(self.epsilon)), self.t(i))
+        return self.mgr.LT(self.t(i - 1), self.t(i))
 
     @lru_cache(maxsize=None)
     def _fluent_mod_formula(self, fluent: Fluent, fluent_exp: Optional[FNode], h: int):
@@ -740,14 +745,6 @@ class BaseEncoder(ABC):
 
         return self.mgr.And(res)
 
-    def _action_condition_phi_sched(self, a: Action, cond: FNode, h: int, timing: Optional[Timing], interval_not_empty: Any):
-        cond_not_satisfied = self.mgr.Not(self.to_smt(cond, h-1))
-
-        return self.mgr.Implies(
-            self.mgr.And(cond_not_satisfied, interval_not_empty),
-            self._phi_sched_parametrized_formula(cond, timing, a, h, h)
-        )
-
     def _phi_sched_parametrized_formula(self, phi: FNode, t: Optional[Timing], a: Optional[Action], w: Optional[int], h: int):
         res = []
         if a is None:
@@ -786,6 +783,7 @@ class BaseEncoder(ABC):
         else:
             abstract_touchers_dict = self.abstract_step_touchers.get(fluent_exp.fluent(), {})
             abstract_touchers = chain(*abstract_touchers_dict.values())
+
         for b, t, e in abstract_touchers:
             if isinstance(b, DurativeAction):
                 # if the action is durative, it might have started in the concrete steps and still
@@ -804,7 +802,6 @@ class BaseEncoder(ABC):
                             parameters_equality.append(self.mgr.EqualsOrIff(self.to_smt(param_exp, k, k, scope=lifted_a), self.to_smt(obj_exp, k)))
                         b_k_formula.append(self.mgr.And(parameters_equality))
                     e_k_time = self.encode_tp(b, t, k, h)
-                    # b_k_formula.append(self.mgr.LT(last_t, e_k_time)) #TODO THIS FIX WITH THE LINE BELOW IS NOT 100% CORRECT, DISCUSS
                     b_k_formula.append(self.mgr.LE(self.mgr.Plus(last_t, self.mgr.Real(self.epsilon)), e_k_time))
                     b_k_formula.append(self.mgr.LE(e_k_time, phi_time))
                     res.append(self.mgr.And(b_k_formula))
@@ -813,9 +810,8 @@ class BaseEncoder(ABC):
             if b is not None: # Instantaneous or Durative action
                 h_step_formula = [self.a(b, h)]
                 e_h_time = self.t_a(b, h) if t is None else self.encode_tp(b, t, h, h)
-            else: # TIL
+            else: # timed effect
                 e_h_time = self.encode_problem_tp(t, h)
-            # h_step_formula.append(self.mgr.LT(last_t, e_h_time)) #TODO THIS FIX WITH THE LINE BELOW IS NOT 100% CORRECT, DISCUSS
             h_step_formula.append(self.mgr.LE(self.mgr.Plus(last_t, self.mgr.Real(self.epsilon)), e_h_time))
             h_step_formula.append(self.mgr.LE(e_h_time, phi_time))
             res.append(self.mgr.And(h_step_formula))
