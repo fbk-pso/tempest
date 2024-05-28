@@ -498,6 +498,8 @@ class BaseEncoder(ABC):
                     continue
                 if self.is_mutex(cond_a, eff_a, cond_b, eff_b):
                     mutex_couples.add(frozenset(((action_a, timing_a), (action_b, timing_b))))
+            if action_a is not None:
+                mutex_couples.add(frozenset([(action_a, timing_a)]))
         return mutex_couples
 
     def _get_touchers(self, problem: Problem) -> Dict[Fluent, Dict[FNode, List[Toucher]]]:
@@ -531,7 +533,16 @@ class BaseEncoder(ABC):
                 # assert action is None and timing.is_global() -> It is commented due to a problem in the UnifiedPlanning test-cases, where some tils have StartTiming instead of GlobalStartTiming
                 return self.encode_problem_tp(timing, h)
 
-        for (action_a, timing_a), (action_b, timing_b) in self._mutex_couples:
+        for mutex_element in self._mutex_couples:
+            if len(mutex_element) == 2:
+                (action_a, timing_a), (action_b, timing_b) = mutex_element
+            else:
+                # Expand case where only 1 element is in the mutex couples
+                # meaning the event must be in mutex with itself
+                assert len(mutex_element) == 1
+                ((action_a, timing_a), ) = mutex_element
+                ((action_b, timing_b), ) = mutex_element
+
             def is_global_end(timing):
                 return timing.is_global() and timing.is_from_end()
 
@@ -545,9 +556,10 @@ class BaseEncoder(ABC):
                 # If epsilon is defined, 2 mutex events don't have the same timing if their distance is > epsilon
                 assert self.epsilon > 0
                 eps = self.mgr.Real(self.epsilon)
-                a_b = self.LT(self.mgr.Minus(time_of_a, time_of_b), eps)
-                b_a = self.LT(self.mgr.Minus(time_of_b, time_of_a), eps)
+                a_b = self.mgr.LT(self.mgr.Minus(time_of_a, time_of_b), eps)
+                b_a = self.mgr.LT(self.mgr.Minus(time_of_b, time_of_a), eps)
                 same_timing = self.mgr.And(a_b, b_a)
+
 
             if action_a is None:
                 assert action_b is not None
@@ -566,11 +578,14 @@ class BaseEncoder(ABC):
 
         return self.mgr.And(res)
 
-    def encode_increasing_time(self, i: int):
+    def encode_increasing_time(self, i):
         if i == 1:
             # First valid step must be >= 0
             return self.mgr.LE(self.mgr.Real(0), self.t(i))
-        return self.mgr.LT(self.t(i - 1), self.t(i))
+        if self.epsilon is None:
+            return self.mgr.LT(self.t(i - 1), self.t(i))
+        assert self.epsilon > 0
+        return self.mgr.LE(self.mgr.Plus(self.t(i - 1), self.mgr.Real(self.epsilon)), self.t(i))
 
     @lru_cache(maxsize=None)
     def _fluent_mod_formula(self, fluent: Fluent, fluent_exp: Optional[FNode], h: int):
@@ -718,7 +733,7 @@ class BaseEncoder(ABC):
         for a in self.abstract_step_actions:
             assert self.epsilon > 0
             sub_res = []
-            sub_res.append(self.mgr.LE(self.mgr.Plus(self.t(h-1), self.mgr.Real(self.epsilon)), self.t_a(a, h))) #TODO understand if this is correct
+            sub_res.append(self.mgr.LE(self.mgr.Plus(self.t(h-1), self.mgr.Real(self.epsilon)), self.t_a(a, h)))
             if isinstance(a, InstantaneousAction):
                 for cond in a.preconditions:
                     cond_not_satisfied = self.mgr.Not(self.to_smt(cond, h-1, h, a))
