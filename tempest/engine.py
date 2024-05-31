@@ -173,10 +173,11 @@ class TempestNonIncremental(TempestEngine):
 
 class TempestOptimalEngine(_BaseEngine):
     """Implementation of the TemPEST Optimal Engine."""
-    def __init__(self, incremental=False, horizon=None, ground_abstract_step: bool = True, grounder_name: Optional[str] = None):
+    def __init__(self, incremental=False, horizon=None, ground_abstract_step: bool = True, grounder_name: Optional[str] = None, sat_before_opt: bool = True):
         super().__init__(incremental, horizon)
         self.ground_abstract_step = ground_abstract_step
         self.grounder_name = grounder_name
+        self.sat_before_opt = sat_before_opt
 
     @property
     def name(self) -> str:
@@ -218,12 +219,57 @@ class TempestOptimalEngine(_BaseEngine):
         assert isinstance(problem, up.model.Problem)
         if heuristic is not None:
             warnings.warn("TemPEST does not support custom heuristics.", UserWarning)
+
+        start_time = time()
+        is_in_timeout: bool = False
         pysmt_env = pysmt.environment.Environment()
 
         epsilon = problem.epsilon
         if epsilon is None:
             epsilon = Fraction(1, 100)
 
+        if self.sat_before_opt:
+            # Find the first step where the problem has a plan using SMT
+            # and then start using OMT from that step
+
+            modify_horizon = lambda x: x
+            if self.incremental:
+                encoder = IncrementalEncoder(problem, pysmt_env=pysmt_env, epsilon=epsilon)
+                modify_horizon = lambda x: x-1
+            else:
+                encoder = MonolithicEncoder(problem, pysmt_env=pysmt_env, epsilon=epsilon)
+
+            h = 2
+            first_sat_step = 0
+            with pysmt_env.factory.Solver(logic="QF_LRA") as smt:
+                step_zero = encoder.encode_step_zero()
+                if step_zero is not None:
+                    smt.add_assertion(step_zero)
+                while self.horizon is None or h <= self.horizon:
+                    formula, assumptions = encoder.encode_step(modify_horizon(h))
+                    if formula is not None:
+                        smt.add_assertion(formula)
+                    if smt.solve(assumptions):
+                        first_sat_step = h
+                    else:
+                        h += 1
+                    elapsed_time = time() - start_time
+                    if output_stream is not None:
+                        output_stream.write(f"No SAT solution with bound {h}. Elapsed_time: {elapsed_time:.3f} seconds\n")
+                    if timeout is not None and elapsed_time > timeout:
+                        is_in_timeout = True
+                    if first_sat_step > 0 or is_in_timeout:
+                        break
+
+            if is_in_timeout:
+                return PlanGenerationResult(
+                    PlanGenerationResultStatus.TIMEOUT, None, self.name
+                )
+        else:
+            # Start using OMT from first step
+            first_sat_step = 2
+
+        # Optimality part
         modify_horizon = lambda x: x
         if self.incremental:
             raise NotImplementedError()
@@ -231,14 +277,22 @@ class TempestOptimalEngine(_BaseEngine):
             encoder = MonolithicEncoder(problem, pysmt_env=pysmt_env, epsilon=epsilon, optimal=True,
                 ground_abstract_step=self.ground_abstract_step, grounder_name=self.grounder_name)
 
-        start_time = time()
-        is_in_timeout: bool = False
-
+        h = 2
         with pysmt_env.factory.Optimizer(logic="QF_LRA") as omt:
             step_zero = encoder.encode_step_zero()
             if step_zero is not None:
                 omt.add_assertion(step_zero)
-            h = 2
+
+            if self.incremental:
+                while h < first_sat_step:
+                    formula, assumptions = encoder.encode_step(modify_horizon(h))
+                    if formula is not None:
+                        omt.add_assertion(formula)
+                    omt.push()
+                    h += 1
+            else: # If there is no incrementality, all previous steps can be skipped
+                h = first_sat_step
+
             while self.horizon is None or h <= self.horizon:
                 formula, assumptions = encoder.encode_step(modify_horizon(h))
                 if formula is not None:
@@ -289,5 +343,15 @@ class TempestOptimalEngine(_BaseEngine):
 
 
 class TempestLiftedAbstractStep(TempestOptimalEngine):
-    def __init__(self, incremental = False, horizon=None):
-        super().__init__(incremental, horizon, False, "")
+    def __init__(self, incremental = False, horizon=None, sat_before_opt=True):
+        super().__init__(incremental, horizon, False, None, sat_before_opt)
+
+
+class TempestOnlyOMT(TempestOptimalEngine):
+    def __init__(self, incremental=False, horizon=None, ground_abstract_step=True, grounder_name=None):
+        super().__init__(incremental, horizon, ground_abstract_step, grounder_name, False)
+
+
+class TempestLiftedAbstractStepOnlyOMT(TempestOptimalEngine):
+    def __init__(self, incremental=False, horizon=None):
+        super().__init__(incremental, horizon, False, None, False)

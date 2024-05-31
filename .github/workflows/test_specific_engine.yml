@@ -1,7 +1,14 @@
-name: CI-on-push
+name: test-specific-engine
 
 on:
-  push
+  workflow_call:
+    inputs:
+      engine-name:
+        required: true
+        type: string
+      engine-class:
+        required: true
+        type: string
 
 env:
   unified_planning_commit: "c0fb5f688c454889814187757641744dde24e5bc"
@@ -56,7 +63,7 @@ jobs:
 
       - name: Create up.ini to install tempest  in the Unified Planning
         run: |
-          echo -e "[engine tempest]\nmodule_name: tempest.engine\nclass_name: TempestEngine\n[engine tempest-ni]\nmodule_name: tempest.engine\nclass_name: TempestNonIncremental\n[engine tempest-opt]\nmodule_name: tempest.engine\nclass_name: TempestOptimalEngine\n[engine tempest-las]\nmodule_name: tempest.engine\nclass_name: TempestLiftedAbstractStep" > .up.ini
+          echo -e "[engine ${{inputs.engine-name}}]\nmodule_name: tempest.engine\nclass_name: ${{inputs.engine-class}}" > .up.ini
 
       - name: Run the report
-        run: python3 unified-planning/up_test_cases/report.py tempest tempest-ni tempest-opt tempest-las -m oneshot -t 3 -e test_cases -b logistic
+        run: python3 unified-planning/up_test_cases/report.py ${{inputs.engine-name}} -m oneshot -t 3 -e test_cases -b logistic
