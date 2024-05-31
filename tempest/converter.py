@@ -1,7 +1,5 @@
-from typing import List
 import unified_planning as up
 import unified_planning.model.walkers as walkers
-from unified_planning.model.fnode import FNode
 from unified_planning.model.fluent import get_all_fluent_exp
 
 

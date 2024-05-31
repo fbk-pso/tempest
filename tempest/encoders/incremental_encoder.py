@@ -5,8 +5,8 @@ from unified_planning.model import DurativeAction, InstantaneousAction
 
 
 class IncrementalEncoder(BaseEncoder):
-    def __init__(self, problem, pysmt_env=None):
-        super().__init__(problem, pysmt_env)
+    def __init__(self, problem, pysmt_env, epsilon=None):
+        super().__init__(problem, pysmt_env, epsilon)
 
     def chain_var(self, action, e, i, w):
         return self.symenc.chain_var(action, e, i, w)
@@ -32,7 +32,7 @@ class IncrementalEncoder(BaseEncoder):
                         self.chain_var(action, ev, i + 1, w), self.mgr.Bool(True)
                     )
                 )
-                rhs = self.encode_tp(action, it.upper, w)
+                rhs = self.encode_tp(action, it.upper, w, None)
                 l.append(
                     self.mgr.Implies(self.a(action, w), self.mgr.LE(rhs, self.t_last()))
                 )

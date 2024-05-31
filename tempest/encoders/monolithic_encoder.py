@@ -1,13 +1,13 @@
 from functools import lru_cache
-from itertools import chain, product
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from itertools import chain
+from typing import Any, Dict, List, Optional, Tuple
 from tempest.encoders.base_encoder import BaseEncoder
-from unified_planning.model import DurativeAction, InstantaneousAction, MinimizeActionCosts, FNode, Parameter
-from pysmt.optimization.goal import MinimizationGoal, MaxSMTGoal
+from unified_planning.model import DurativeAction, InstantaneousAction, MinimizeActionCosts, FNode, Action, Timing
+from pysmt.optimization.goal import MaxSMTGoal, MinMaxGoal
 
 
 class MonolithicEncoder(BaseEncoder):
-    def encode_durative_action(self, action, i, h):
+    def encode_durative_action(self, action: DurativeAction, i: int, h: int):
         l = []
 
         # Action duration constraints
@@ -17,9 +17,9 @@ class MonolithicEncoder(BaseEncoder):
 
         # Action conditions
         for it, lc in action.conditions.items():
-            c = self.em.And(lc)
-            for k in range(i, h):
-                l.append(self.encode_condition_or_goal(action, it, c, k, i, h))
+            for c in lc:
+                for k in range(i, h):
+                    l.append(self.encode_condition_or_goal(action, it, c, k, i, h))
 
         # Action effects
         for t, le in action.effects.items():
@@ -37,7 +37,7 @@ class MonolithicEncoder(BaseEncoder):
     def encode_step_zero(self) -> Optional[Any]:
         return None
 
-    def encode_timed_goals(self, h, optimal):
+    def encode_timed_goals(self, h: int, optimal: bool):
         res = []
         for it, lg in self.problem.timed_goals.items():
             g = self.em.And(lg)
@@ -99,15 +99,15 @@ class MonolithicEncoder(BaseEncoder):
                     res.append(self.encode_durative_action(a, h, h))
 
             res.append(self.encode_density_constraints(h))
+            res.append(self.phi_sched(h))
 
         res.append(self.encode_timed_goals(h, self.optimal))
 
         # Goals
-        fve = self.problem.environment.free_vars_extractor
         for g in self.problem.goals:
             goal_formula = self.to_smt(g, h - 1)
             if self.optimal:
-                goal_formula = self.mgr.Or(chain([goal_formula], (self.fluent_mod(exp, None, None, h) for exp in fve.get(g))))
+                goal_formula = self.mgr.Or(chain([goal_formula], (self.fluent_mod(exp, None, None, h) for exp in self._get_sorted_free_vars(g))))
             res.append(goal_formula)
 
         # fluent_mod variables
@@ -120,7 +120,19 @@ class MonolithicEncoder(BaseEncoder):
         assert len(self.problem.quality_metrics) < 2, "Problem has more than one quality metric"
         metric = self.problem.quality_metrics[0] if self.problem.quality_metrics else None
         if metric is None or metric.is_minimize_makespan():
-            return MinimizationGoal(self.t(h-1)), None
+            terms = [self.t(h-1)]
+            timed_goals_timings = chain(*map(lambda x: (x.lower, x.upper), self.problem.timed_goals.keys()))
+            problem_timings = chain(timed_goals_timings, self.problem.timed_effects.keys())
+            for timing in filter(lambda x: x.is_from_start(), problem_timings):
+                assert isinstance(timing, Timing)
+                terms.append(self.encode_problem_tp(timing, h))
+            for a in self.abstract_step_actions:
+                t_a = self.t_a(a, h)
+                if isinstance(a, InstantaneousAction):
+                    terms.append(t_a)
+                else:
+                    terms.append(self.mgr.Plus(t_a, self.dur(a, h)))
+            return MinMaxGoal(terms), None
         elif metric.is_minimize_action_costs():
             return self._get_max_smt_goal(metric, h), None
         else:
@@ -150,7 +162,7 @@ class MonolithicEncoder(BaseEncoder):
         return goal
 
     @lru_cache(maxsize=None)
-    def _get_action_costs(self, metric, action) -> List[Tuple[Dict[FNode, FNode], FNode]]:
+    def _get_action_costs(self, metric: MinimizeActionCosts, action: Action) -> List[Tuple[Dict[FNode, FNode], FNode]]:
         # This method takes the metric and the action and returns a list
         # containing  Tuples, each Tuple contains 2 element, the first one is
         # a Dictionary that contains as keys the action parameters and
@@ -163,11 +175,9 @@ class MonolithicEncoder(BaseEncoder):
         if cost.is_constant(): # cost does not depend on parameters
             return [({}, cost)]
         res = []
-        p = self.param_getter.get(cost)
-        relevant_parameters = tuple(filter(lambda x: x in p, (self.em.ParameterExp(ap) for ap in action.parameters)))
-        assert relevant_parameters and len(p) == len(relevant_parameters)
-        for parameters_value in self._get_possible_parameters_assignments(relevant_parameters):
-            assignments = dict(zip(relevant_parameters, parameters_value))
+        cost_parameters = self._get_sorted_parameters(cost, action)
+        for parameters_value in self._get_possible_parameters_assignments(cost_parameters):
+            assignments = dict(zip(cost_parameters, parameters_value))
             grounded_cost = self.simplifier.simplify(cost.substitute(assignments))
             assert grounded_cost.is_constant(), f"Non constant expression detected in ActionCosts: {action.name}, {metric.get_action_cost(action)}"
             res.append((assignments, grounded_cost))
@@ -189,13 +199,13 @@ class MonolithicEncoder(BaseEncoder):
                     for s in range(1, i):
                         a_s = self.a(act, s)
                         for t in act.effects.keys():
-                            effect_at_t_i = self.mgr.Equals(self.encode_tp(act, t, s), t_i)
+                            effect_at_t_i = self.mgr.Equals(self.encode_tp(act, t, s, h), t_i)
                             sub_res.append(self.mgr.And(a_s, effect_at_t_i))
             res.append(self.mgr.Or(sub_res))
 
         return self.mgr.Implies(self._uses_abstact_step(h), self.mgr.And(res))
 
-    def _uses_abstact_step(self, h):
+    def _uses_abstact_step(self, h: int):
         res = []
 
         last_concrete_step_time = self.t(h-1)
