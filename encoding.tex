@@ -1,0 +1,312 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{setspace}
+\usepackage[paperheight=29.7cm,paperwidth=21cm,outer=1.5cm,inner=2.5cm,top=2cm,bottom=2cm]{geometry} % defining layout
+\usepackage{titlesec} % custom format of chapters
+\usepackage{todonotes}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{algpseudocode}
+\usepackage{mathtools}
+\usepackage{algorithm}
+\usepackage{diagbox}
+\usepackage{xcolor}
+\usepackage{array}
+\usepackage{tikz}
+\usepackage{xspace}
+\usepackage{stmaryrd}
+\usetikzlibrary{positioning}
+%\definecolor{processblue}{cmyk}{0.96,0,0,0}
+\newcommand{\entry}{\diagbox[linewidth=0em,linecolor=white]}
+\newcommand\myarray[1]{%
+  \begingroup
+  \renewcommand\arraystretch{1.5}
+  \left\{ \begin{array}{@{}l@{}} #1 \end{array} \right.
+  \endgroup}
+
+\renewcommand{\qedsymbol}{\ensuremath{\blacksquare}}
+\newcommand\numberthis{\addtocounter{equation}{1}\tag{\theequation}}
+\newcommand{\tuple}[1]{\langle #1 \rangle}
+\DeclareMathOperator*{\argmax}{arg\,max}
+\DeclareMathOperator*{\argmin}{arg\,min}
+
+\newtheorem{definition}{Definition}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\newtheorem{corollary}[lemma]{Corollary}
+
+
+\title{TemPEST Encoding}
+\author{Alessandro Valentini, Stefan Panjkovic, Luca Framba}
+\date{July 2023}
+
+\begin{document}
+
+\maketitle
+
+\section{Non-incremental}
+
+\begin{align*}
+  &\Pi_h: \varphi^{\text{INIT}} \land \varphi_{h}^{\text{TILS}} \land \varphi_{h}^{\text{DUR\_ACTIONS}} \land \varphi_{h}^{\text{INST\_ACTIONS}} \land \varphi_{h}^{\text{FA}} \land \varphi_{h}^{\text{TIME}} \land \varphi_{h}^{\text{TC}} \land \varphi_{h}^{\text{GOALS}} \land \varphi_{h}^{\text{NSO}} \land \varphi_{h}^{\text{MUTEX}}\\
+\end{align*}
+
+\begin{align*}
+  &\varphi^{\text{INIT}}: \bigwedge\limits_{f \in F} \left( f_{0} = I(f) \right)
+\end{align*}
+
+\begin{align*}
+  &\llbracket\tau\rrbracket =
+  \begin{cases}
+      k, & \text{if } \tau = \text{start} + k\\
+      t_{h-1}, & \text{if } \tau = \text{end}
+  \end{cases}
+\end{align*}
+
+\begin{align*}
+  &\varphi_h^{\text{TILS}}:\bigwedge\limits_{[\tau] \; f \coloneqq e \in \text{TILS}} \left( \bigvee\limits_{i \in \{ 1, \ldots, h-1 \}} ( t_i = \llbracket\tau\rrbracket \land f_i = [e]_{i-1}) \right)
+\end{align*}
+
+\begin{align*}
+  &\varphi_h^{\text{DUR\_ACTIONS}}:\bigwedge\limits_{a \in A} \bigwedge\limits_{s \in \{ 1, \ldots, h \}} ( a_s \implies \varphi_{s, h}^{C_a} \land \varphi_{s, h}^{E_a} \land \varphi_{s, h}^{D_a} ) \\
+\end{align*}
+
+\begin{align*}
+  &\llbracket\tau\rrbracket_s^a =
+  \begin{cases}
+      t_s + k, & \text{if } \tau = \text{start} + k\\
+      t_s + d_s^a - k, & \text{if } \tau = \text{end} - k
+  \end{cases}
+\end{align*}
+
+\begin{align*}
+  &\!\!\!\!\!\!\!\!\!\varphi_{s, h}^{C_a}: \bigwedge\limits_{[\tau_1, \tau_2] \phi \in C_a} &&\left( \bigwedge\limits_{p \in \{ s, \ldots, h-1 \}} \left( \left( \llbracket\tau_1\rrbracket_s^a \leq t_p < \llbracket\tau_2\rrbracket_s^a \implies [\phi]_p^s \right) \land \left( t_{p-1} < \llbracket\tau_1\rrbracket_s^a \land t_p \geq \llbracket\tau_1\rrbracket_s^a \land \llbracket\tau_1\rrbracket_s^a \leq \llbracket\tau_2\rrbracket_s^a \implies [\phi]_{p-1}^s \right) \right) \right)
+\end{align*}
+
+\begin{align*}
+  &\varphi_{s, h}^{E_a}: \bigwedge\limits_{[\tau] f \coloneqq e \in E_a} \left( \bigvee\limits_{p \in \{ s, \ldots, h-1 \}} \left( t_p = \llbracket\tau\rrbracket_s^a \land f_{p} = [e]_{p-1}^s \right) \right)
+\end{align*}
+
+\begin{align*}
+  &\varphi_{s, h}^{D_a}: ([d1]_{s-1}^s \leq d_s^a \leq [d2]_{s-1}^s) \land (t_s + d_s^a \leq t_{h-1})
+\end{align*}
+
+\begin{align*}
+  & \varphi_{h}^{\text{INST\_ACTIONS}}: \bigwedge\limits_{a \in inst\_A} \bigwedge\limits_{i \in \{1, \ldots, h-1\}} \left( a_i \implies \left( \bigwedge\limits_{f \coloneqq e \in a} \left( f_{i} = [e]_{i-1}^{i} \right) \land \bigwedge\limits_{e \in a} [e]_{i-1}^{i} \right) \right) \\
+\end{align*}
+
+\begin{align*}
+  &\varphi_h^{\text{FA}}: \bigwedge\limits_{f \in F} \bigwedge\limits_{i \in \{ 1, \ldots, h-1 \}} \left( f_{i-1} \neq f_i \implies \left( \bigvee\limits_{[\tau] f \coloneqq e \in \text{TILS}} t_i = \llbracket\tau\rrbracket \right) \lor \left( \bigvee\limits_{a \in A} \bigvee\limits_{[\tau] f \coloneqq e \in E_a} \bigvee\limits_{j \in \{ 1, \ldots, i \}} a_j \land t_i = \llbracket\tau\rrbracket_j^a \right) \right)
+\end{align*}
+
+
+\begin{align*}
+  &\varphi_{h}^{\text{TIME}}: \; t_0 = -1 \; \land \; 0 \leq t_1 \; \land \; \bigwedge\limits_{i \in \{2, \ldots, h-1\}} \left( t_{i-1} < t_i \right)
+\end{align*}
+
+\begin{align*}
+  &\varphi_{h}^{\text{TC}}: \bigwedge\limits_{f[lb, up] \in F} \bigwedge\limits_{i \in \{0, \ldots, h-1\}} f_i \geq lb \land f_i \leq ub\\
+\end{align*}
+
+\begin{align*}
+  &\varphi_{h}^{\text{GOALS}}: && \bigwedge\limits_{\substack{[\tau_1, \tau_2] \; e \in G\\\ \tau_1 \ne \text{end} \land \tau_2 \ne \text{end} \\ \tau_1 \leq \tau_2}} &&\left( \bigwedge\limits_{s \in \{1, \ldots, h-1\}} \left(t_s \geq \llbracket \tau_1 \rrbracket \land t_s < \llbracket \tau_2 \rrbracket \right) \implies [e]_{s} \right)\\
+  & && && \land \left( \bigwedge\limits_{s \in \{1, \ldots, h-1\}} \left( t_{s-1} < \llbracket \tau_1 \rrbracket \land t_s \geq \llbracket \tau_1 \rrbracket \land \right) \implies [e]_{s-1} \right)\\
+  & && && \land \left( \llbracket \tau_2 \rrbracket \leq t_{h-1} \right) \land \left( \left( \llbracket \tau_1 \rrbracket = 0 \right) \implies [e]_0 \right) \\ \\
+  & &&\land \bigwedge\limits_{\substack{[\tau, \text{end}] \; e \in G\\\ \tau \ne \text{end}}} &&\left( \bigwedge\limits_{s \in \{1, \ldots, h-1\}} \left( t_s \geq \llbracket \tau \rrbracket \right) \implies [e]_{s} \right)\\
+  & && && \land \left( \bigwedge\limits_{s \in \{1, \ldots, h-1\}} \left( t_{s-1} < \llbracket \tau \rrbracket \land t_s \geq \llbracket \tau \rrbracket \right) \implies [e]_{s-1} \right)\\ 
+  & && && \land \left( \left( \llbracket \tau \rrbracket = 0 \right) \implies [e]_0 \right) \\ \\
+  & &&\land \bigwedge\limits_{[\text{end}] \; e \in G} &&\left( [e]_{h-1} \right)\\
+\end{align*}
+
+\begin{align*}
+  &\varphi_{h}^{\text{NSO}}: \bigwedge\limits_{a \in A} \bigwedge\limits_{\overrightarrow{p} \in \text{params}(a)} \bigwedge\limits_{i \in \{ 1, \ldots, h-1 \}} \bigwedge\limits_{j \in \{ 1, \ldots, i-1 \}} \left( \left( a_i \land a_j \land \overrightarrow{p(a)}_i = \overrightarrow{p(a)}_j\right) \implies t_j + d_j^a \leq t_i \right)
+\end{align*}
+
+\begin{align*}
+  &\varphi_{h}^{\text{MUTEX}}:&&\bigwedge\limits_{a \in A \cup \text{inst}_A} \bigwedge\limits_{\xi_1 \equiv [\tau_1, \tau_2]\phi \in a} \bigwedge\limits_{i \in \{1, \ldots, h-1\}} \left( \vphantom{\bigwedge\limits_{a \in A \cup \text{inst}_A} \bigwedge\limits_{\xi_1 \equiv [\tau_1] \text{ev}_1 \in a} \bigwedge\limits_{i \in \{1, \ldots, h-1\}}} \right.\\ & && \bigwedge\limits_{b \in A \cup \text{inst}_A} \bigwedge\limits_{\substack{\xi_2 \equiv [\tau^\prime]f \coloneqq e \in E_b:\\\text{is\_mutex}(\xi_1,\xi_2)}}\bigwedge\limits_{j \in \{1, \ldots, h-1\}} \neg (a_i \land b_j \land (\llbracket \tau_1 \rrbracket_i^a = \llbracket \tau^\prime \rrbracket_j^b \lor \llbracket \tau_2 \rrbracket_i^a = \llbracket \tau^\prime \rrbracket_j^b)) \land \\& && \left. \bigwedge\limits_{\substack{\xi_2 \equiv [\tau_1^\prime, \tau_2^\prime]\phi \in \text{TILS} \cup \text{G}:\\ \text{is\_mutex}(\xi_1, \xi_2)}} \neg (a_i \land (\llbracket \tau_1 \rrbracket_i^a = \llbracket \tau_1^\prime \rrbracket \lor \llbracket \tau_1 \rrbracket_i^a = \llbracket \tau_2^\prime \rrbracket \lor \llbracket \tau_2 \rrbracket_i^a = \llbracket \tau_1^\prime \rrbracket \lor \llbracket \tau_2 \rrbracket_i^a = \llbracket \tau_2^\prime \rrbracket))\vphantom{\bigwedge\limits_{a \in A \cup \text{inst}_A} \bigwedge\limits_{\text{ev}_1 \equiv [\tau_1] e_1 \in a} \bigwedge\limits_{i \in \{1, \ldots, h-1\}}}\right)
+\end{align*}
+
+\section{Optimal non-incremental}
+
+\begin{align*}
+  &\Pi_h^{\text{opt}}: && \varphi^{\text{INIT}} \land \varphi_h^{\text{TILS}} \land \varphi_h^{\text{ACTIONS}} \land \varphi_h^{\text{FA}} \land \varphi_h^{\text{TIME}} \land \varphi_h^{\text{TC}} \land \varphi_h^{\text{GOALS}} \varphi_h^{\text{NSO}} \land \varphi_h^{\text{MUTEX}} \land \varphi_h^{\text{MOD}} \land \varphi_h^{\text{DENS}} \land \varphi_h^{\text{SCHED}} \\
+\end{align*}
+
+\begin{align*}
+  &\varphi^{\text{INIT}}: \bigwedge\limits_{f \in F} \left( f_{0} = I(f) \right)
+\end{align*}
+
+\begin{align*}
+  &\varphi_h^{\text{TILS}}:\bigwedge\limits_{[\tau] \; f \coloneqq e \in \text{TILS}} \left( \bigvee\limits_{i \in \{ 1, \ldots, h-1 \}} \left( t_i = \llbracket\tau\rrbracket \land f_i = [e]_{i-1} \right) \lor t_{h-1} < \llbracket\tau\rrbracket \right)
+\end{align*}
+
+\begin{align*}
+  &\varphi_h^{\text{ACTIONS}}:\bigwedge\limits_{a \in A} \bigwedge\limits_{s \in \{ 1, \ldots, h \}} ( a_s \implies \varphi_{s, h}^{C_a} \land \varphi_{s, h}^{E_a} \land \varphi_{s, h}^{D_a} ) \\
+\end{align*}
+
+\begin{align*}
+  &\!\!\!\!\!\!\!\!\!\!\!\varphi_{s, h}^{C_a}: \bigwedge\limits_{[\tau_1, \tau_2] \phi \in C_a} &&\left( \bigwedge\limits_{p \in \{ s, \ldots, h-1 \}} \left( \left( \llbracket\tau_1\rrbracket_s^a \leq t_p < \llbracket\tau_2\rrbracket_s^a \implies [\phi]_p^s \right) \land \left( t_{p-1} < \llbracket\tau_1\rrbracket_s^a \land t_p \geq \llbracket\tau_1\rrbracket_s^a \land \llbracket\tau_1\rrbracket_s^a \leq \llbracket\tau_2\rrbracket_s^a \implies [\phi]_{p-1}^s \right) \right) \land \right.\\
+  & &&\left. \left( t_{h-1} < \llbracket\tau_1\rrbracket_s^a \implies  \left( [\phi]_{h-1}^s \lor \bigvee\limits_{f \in \text{vars}(\phi)} \text{mod}_f \right) \right) \right)
+\end{align*}
+
+\begin{align*}
+  &\varphi_{s, h}^{E_a}: \bigwedge\limits_{[\tau] f \coloneqq e \in E_a} \left( \bigvee\limits_{p \in \{ s, \ldots, h-1 \}} \left( t_p = \llbracket\tau\rrbracket_s^a \land f_{p} = [e]_{p-1}^s \right) \lor t_{h-1} < \llbracket\tau\rrbracket_s^a \right)
+\end{align*}
+
+\begin{align*}
+  &\varphi_{s, h}^{D_a}: [d1]_{s-1}^s \leq d_s^a \leq [d2]_{s-1}^s
+\end{align*}
+
+\begin{align*}
+  &\varphi_h^{\text{FA}}: \bigwedge\limits_{f \in F} \bigwedge\limits_{i \in \{ 1, \ldots, h-1 \}} \left( f_{i-1} \neq f_i \implies \left( \bigvee\limits_{[\tau] f \coloneqq e \in \text{TILS}} t_i = \llbracket\tau\rrbracket \right) \lor \left( \bigvee\limits_{a \in A} \bigvee\limits_{[\tau] f \coloneqq e \in E_a} \bigvee\limits_{j \in \{ 1, \ldots, i \}} a_j \land t_i = \llbracket\tau\rrbracket_j^a \right) \right)
+\end{align*}
+
+\begin{align*}
+  &\varphi_{h}^{\text{TIME}}: \; t_0 = -1 \; \land \; 0 \leq t_1 \; \land \; \bigwedge\limits_{i \in \{2, \ldots, h-1\}} \left( t_{i-1} < t_i \right)
+\end{align*}
+
+\begin{align*}
+  &\varphi_{h}^{\text{TC}}: \bigwedge\limits_{f[lb, up] \in F} \bigwedge\limits_{i \in \{0, \ldots, h-1\}} f_i \geq lb \land f_i \leq ub
+\end{align*}
+
+\begin{align*}
+  &\varphi_{h}^{\text{GOALS}}: && \bigwedge\limits_{\substack{[\tau_1, \tau_2] \; e \in G\\\ \tau_1 \ne \text{end} \land \tau_2 \ne \text{end} \\ \tau_1 \leq \tau_2 }} &&\left( \bigwedge\limits_{s \in \{1, \ldots, h-1\}} \left(t_s \geq \llbracket \tau_1 \rrbracket \land t_s < \llbracket \tau_2 \rrbracket \right) \implies [e]_{s} \right)\\
+  & && && \land \left( \bigwedge\limits_{s \in \{1, \ldots, h-1\}} \left( t_{s-1} < \llbracket \tau_1 \rrbracket \land t_s \geq \llbracket \tau_1 \rrbracket \right) \implies [e]_{s-1} \right)\\
+  & && &&  \land \left( \left( \llbracket \tau_1 \rrbracket = 0 \right) \implies [e]_0 \right) \\ 
+  & && && \land \left( t_{h-1}< \llbracket \tau_2 \rrbracket \implies \left( [\phi]_{h-1} \lor \bigvee\limits_{f \in \text{vars}(\phi)} \text{mod}_f \right) \right)\\
+  & &&\land \bigwedge\limits_{\substack{[\tau, \text{end}] \; e \in G\\\ \tau \ne \text{end}}} &&\left( \bigwedge\limits_{s \in \{1, \ldots, h-1\}} \left( t_s \geq \llbracket \tau \rrbracket \right) \implies [e]_{s} \right)\\
+  & && && \land \left( \bigwedge\limits_{s \in \{1, \ldots, h-1\}} \left( t_{s-1} < \llbracket \tau \rrbracket \land t_s \geq \llbracket \tau \rrbracket \right) \implies [e]_{s-1} \right)\\ 
+  & && && \land \left( \left( \llbracket \tau \rrbracket = 0 \right) \implies [e]_0 \right) \\
+  & && && \land \left( t_{h-1} < \llbracket \tau \rrbracket \implies \left( [\phi]_{h-1} \lor \bigvee\limits_{f \in \text{vars}(\phi)} \text{mod}_f \right) \right)
+  \\
+  & &&\land \bigwedge\limits_{[\text{end}] \phi \in G} &&\left([\phi]_{h-1} \lor \bigvee\limits_{f \in \text{vars}(\phi)} \text{mod}_f \right)\\
+\end{align*}
+
+\begin{align*}
+  &\varphi_{h}^{\text{NSO}}: \bigwedge\limits_{a \in A} \bigwedge\limits_{\overrightarrow{p} \in \text{params}(a)} \bigwedge\limits_{i \in \{ 1, \ldots, h-1 \}} \bigwedge\limits_{j \in \{ 1, \ldots, i-1 \}} \left( \left( a_i \land a_j \land \overrightarrow{p(a)}_i = \overrightarrow{p(a)}_j\right) \implies t_j + d_j^a \leq t_i \right)
+\end{align*}
+
+\begin{align*}
+  &\varphi_{h}^{\text{MUTEX}}:&&\bigwedge\limits_{a \in A \cup \text{inst}_A} \bigwedge\limits_{\xi_1 \equiv [\tau_1, \tau_2]\phi \in a} \bigwedge\limits_{i \in \{1, \ldots, h-1\}} \left( \vphantom{\bigwedge\limits_{a \in A \cup \text{inst}_A} \bigwedge\limits_{\xi_1 \equiv [\tau_1] \text{ev}_1 \in a} \bigwedge\limits_{i \in \{1, \ldots, h-1\}}} \right.\\ & && \bigwedge\limits_{b \in A \cup \text{inst}_A} \bigwedge\limits_{\substack{\xi_2 \equiv [\tau^\prime]f \coloneqq e \in E_b:\\\text{is\_mutex}(\xi_1,\xi_2)}}\bigwedge\limits_{j \in \{1, \ldots, h-1\}} \neg (a_i \land b_j \land (\llbracket \tau_1 \rrbracket_i^a = \llbracket \tau^\prime \rrbracket_j^b \lor \llbracket \tau_2 \rrbracket_i^a = \llbracket \tau^\prime \rrbracket_j^b)) \land \\& && \left. \bigwedge\limits_{\substack{\xi_2 \equiv [\tau_1^\prime, \tau_2^\prime]\phi \in \text{TILS} \cup \text{G}:\\ \text{is\_mutex}(\xi_1, \xi_2)}} \neg (a_i \land (\llbracket \tau_1 \rrbracket_i^a = \llbracket \tau_1^\prime \rrbracket \lor \llbracket \tau_1 \rrbracket_i^a = \llbracket \tau_2^\prime \rrbracket \lor \llbracket \tau_2 \rrbracket_i^a = \llbracket \tau_1^\prime \rrbracket \lor \llbracket \tau_2 \rrbracket_i^a = \llbracket \tau_2^\prime \rrbracket))\vphantom{\bigwedge\limits_{a \in A \cup \text{inst}_A} \bigwedge\limits_{\text{ev}_1 \equiv [\tau_1] e_1 \in a} \bigwedge\limits_{i \in \{1, \ldots, h-1\}}}\right)
+\end{align*}
+
+\begin{align*}
+  &\varphi_h^{\text{MOD}}: \bigwedge\limits_{f \in F} \left( \text{mod}_f \iff \left( \bigvee\limits_{[\tau] f \coloneqq e \in \text{TILS}} \llbracket \tau \rrbracket > t_{h-1} \right) \lor \left( \bigvee\limits_{a \in A} \bigvee\limits_{s \in \{ 1, \ldots, h \}} \bigvee\limits_{[\tau] f \coloneqq e \in E_a} a_s \land \llbracket \tau \rrbracket_s^a > t_{h-1} \right) \right)
+\end{align*}
+
+\begin{align*}
+  &\varphi_h^{\text{DENS}}: \neg \varphi_h^{\text{CG}} \implies \bigwedge\limits_{i \in \{ 1, \ldots, h-1 \}} \left( \left( \bigvee\limits_{[\tau] f \coloneqq e \in \text{TILS}} t_i = \llbracket \tau \rrbracket \right) \lor \left( \bigvee\limits_{a \in A} \left( a_i \lor \bigvee\limits_{s \in \{ 1, \ldots, i-1 \}} \bigvee\limits_{[\tau] f \coloneqq e \in E_a} a_s \land t_i = \llbracket \tau \rrbracket_s^a \right) \right) \right)
+\end{align*}
+
+\begin{align*}
+  &\varphi_h^{\text{CG}}: \bigwedge\limits_{[\text{end}] \phi \in G} [\phi]_{h-1} \land \bigwedge\limits_{\substack{[\tau_1, \tau_2] \phi \in G \\ \tau_1 \leq \tau_2}} \llbracket \tau_2 \rrbracket \leq t_{h-1} \land \bigwedge\limits_{[\tau] f \coloneqq e \in \text{TILS}} \llbracket \tau \rrbracket \leq t_{h-1} \land \bigwedge\limits_{a \in A} \bigwedge\limits_{s \in \{ 1, \ldots, h-1 \}} \left( a_s \implies t_s + d_s^a \leq t_{h-1} \right)
+\end{align*}
+
+\begin{align*}
+  &\varphi_h^{\text{SCHED}}: &&\bigwedge\limits_{\substack{\xi \equiv [\tau_1, \tau_2] \phi \in G: \tau_1 \in \mathbb{R} \\ \tau_1 \leq \tau_2}} \left( \left( \neg [\phi]_{h-1} \land \llbracket \tau_1 \rrbracket > t_{h-1} \right) \implies \varphi_{h}^{\text{SCHED}, \xi} \right) \land\\
+  & &&\bigwedge\limits_{a \in A} \bigwedge\limits_{s \in \{ 1, \ldots, h \}} \left( a_s \implies \bigwedge\limits_{\xi \equiv [\tau_1, \tau_2] \phi \in C_a} \left( \left( \neg [\phi]_{h-1}^s \land \llbracket \tau_1 \rrbracket_s^a > t_{h-1} \right) \implies \varphi_{s, a, h}^{\text{SCHED}, \xi} \right) \right) \land \bigwedge\limits_{a \in A} \left( t_{h-1} < t_h^a \right)
+\end{align*}
+
+\begin{align*}
+  &\varphi_{h}^{\text{SCHED}, \xi \equiv [\tau_1, \tau_2] \phi}: \bigvee\limits_{f \in \text{vars}(\phi)} &&\left( \text{mod}_f \land \left( \left( \bigvee\limits_{\xi^\prime \equiv [\tau^\prime] f \coloneqq e \in \text{TILS}} t_{h-1} < \llbracket \tau^\prime \rrbracket \leq \llbracket \tau_1 \rrbracket \right) \lor \right. \right.\\
+  & &&\left. \left. \left( \bigvee\limits_{b \in A} \bigvee\limits_{k \in \{ 1, \ldots, h \}} \bigvee\limits_{\xi^\prime \equiv [\tau^\prime] f \coloneqq e \in E_b} b_k \land t_{h-1} < \llbracket \tau^\prime \rrbracket_k^b \leq \llbracket \tau_1 \rrbracket \right) \right) \right)
+\end{align*}
+
+\begin{align*}
+  &\varphi_{s, a, h}^{\text{SCHED}, \xi \equiv [\tau_1, \tau_2] \phi}: \bigvee\limits_{f \in \text{vars}(\phi)} &&\left( \text{mod}_f \land \left( \left( \bigvee\limits_{\xi^\prime \equiv [\tau^\prime] f \coloneqq e \in \text{TILS}} t_{h-1} < \llbracket \tau^\prime \rrbracket \leq \llbracket \tau_1 \rrbracket_s^a \right) \lor \right. \right.\\
+  & &&\left. \left. \left( \bigvee\limits_{b \in A} \bigvee\limits_{k \in \{ 1, \ldots, h \}} \bigvee\limits_{\xi^\prime \equiv [\tau^\prime] f \coloneqq e \in E_b} b_k \land t_{h-1} < \llbracket \tau^\prime \rrbracket_k^b \leq \llbracket \tau_1 \rrbracket_s^a \right) \right) \right)
+\end{align*}
+
+\section{Incremental}
+
+\begin{align*}
+  &\Pi_0: \varphi^{\text{INIT}} \land \varphi_{0}^{\text{TILS}} \land \varphi_{0}^{\text{TIME}} \land \varphi_{0}^{\text{GOALS}}
+\end{align*}
+
+\begin{align*}
+  &\varphi^{\text{INIT}}: \bigwedge\limits_{f \in F} \left( f_{0} = I(f) \right)
+\end{align*}
+
+\begin{align*}
+  &\varphi_0^{\text{TILS}}: \bigwedge\limits_{\xi \equiv [\tau] \; f \coloneqq e \in \text{TILS}} q_1^{0, \xi} 
+\end{align*}
+
+\begin{align*}
+  &\varphi_{0}^{\text{TIME}}: \; t_0 = -1 \land t_1 \geq 0
+\end{align*}
+
+\begin{align*}
+    &\varphi_0^\text{GOALS}: \bigwedge\limits_{\substack{[\tau_1, \tau_2] e \in G\\ \tau_1 = \text{start}}} [e]_0
+\end{align*}
+
+\begin{align*}
+    &\Pi_i: \varphi_{i}^{\text{TILS}} \land \varphi_{i}^{\text{DUR\_ACTIONS}} \land \varphi_{i}^{\text{INST\_ACTIONS}} \land \varphi_{i}^{\text{FA}} \land \varphi_{i}^{\text{TIME}} \land \varphi_{i}^{\text{TC}} \land \varphi_{i}^{\text{GOALS}} \land \varphi_{i}^\text{NSO} \land \varphi_i^\text{MUTEX} \land \boldsymbol{t_{\text{last}} = t_i}
+\end{align*}
+
+\begin{align*}
+    &\varphi_i^\text{TILS}: \bigwedge\limits_{\xi \equiv [\tau] f \coloneqq e \in \text{TILS}} \left( q_i^{0, \xi} \implies (t_i = \llbracket\tau\rrbracket \land f_i = [e]_{i-1}) \lor q_{i+1}^{0, \xi} \right) \land \boldsymbol{\left( q_{i+1}^{0, \xi} \implies \bot \right)}
+\end{align*}
+
+\begin{align*}
+  &\varphi_{i}^{\text{TC}}: \bigwedge\limits_{f[lb, up] \in F} f_i \geq lb \land f_i \leq ub\\
+\end{align*}
+
+\begin{align*}
+  &\varphi_{i}^{\text{TIME}}: \; \left( t_{i-1} < t_i \right) \\
+\end{align*}
+
+\begin{align*}
+  & \varphi_{i}^{\text{INST\_ACTIONS}}: \bigwedge\limits_{a \in inst\_A} \left( a_i \implies \left( \bigwedge\limits_{f \coloneqq e \in a} \left( f_{i} = [e]_{i-1}^{i} \right) \land \bigwedge\limits_{e \in a} [e]_{i-1}^{i} \right) \right) \\
+\end{align*}
+
+% \begin{align*}
+%   &\varphi_{i}^{\text{MC}}: \bigwedge\limits_{a \in inst\_A} a_i \implies \left( \bigwedge\limits_{b \in inst\_A} \left(is\_mutex(a, b) \implies \neg b_i \right) \right) \\
+% \end{align*}
+
+\begin{align*}
+  &\varphi_{i}^{\text{DUR\_ACTIONS}} &&: \bigwedge\limits_{a_{[d1, d2]} \in A} \;\;\;\;\;\;\;\;\;\;\;\; a_i \implies && \left( \bigwedge\limits_{\xi \in a} q_i^{i, \xi} \land \left(d_i^a \geq [d1]_i \land d_i^a \leq [d2]_i \right) \land \left( t_i + d_i^a \leq t_{last} \right) \right) \\ \\
+  & &&\land \bigwedge\limits_{a \in A} && \bigwedge\limits_{s \in \{1, \ldots, i\}} \left( \right.\\ \\
+  & && \bigwedge\limits_{\xi \equiv [\text{start}+k] \; f \coloneqq e \in a} &&\left( q_i^{s, \xi} \implies \left( t_i = t_s + k \land f_{i} = [e]_{i-1}^s \right) \lor q_{i+1}^{s, \xi} \right)\\
+  & && && \land \boldsymbol{\left( q_{i+1}^{s, \xi} \implies false \right)}\\ \\
+  & && \land \bigwedge\limits_{\xi \equiv [\text{end}-k] \; f \coloneqq e \in a} &&\left( q_i^{s, \xi} \implies \left( t_i = t_s + d_s^a - k \land f_{i} = [e]_{i-1}^s \right) \lor q_{i+1}^{s, \xi} \right)\\
+  & && && \land \boldsymbol{\left( q_{i+1}^{s, \xi} \implies false \right)}\\ \\
+  & && \land \bigwedge\limits_{\xi \equiv [\text{start}+k_1, \text{start}+k_2] \; e \in a} &&\left( q_i^{s, \xi} \implies \left( \left( t_i \geq t_s + k_1 \land t_i < t_s + k_2 \right) \implies [e]_{i}^s \right) \right.\\
+  & && && \; \; \; \; \; \; \; \; \land \left( \left( t_{i-1} < t_s + k_1 \land t_i \geq t_s + k_1 \right) \implies [e]_{i-1}^s \right)\\
+  & && && \; \; \; \; \; \; \; \; \left. \land \; q_{i+1}^{s, \xi} \right)\\
+  & && && \land \boldsymbol{\left( q_{i+1}^{s, \xi} \implies true \right)}\\ \\
+  & && \land \bigwedge\limits_{\xi \equiv [\text{start}+k_1, \text{end}-k_2] \; e \in a} &&\left( q_i^{s, \xi} \implies \left( \left( t_i \geq t_s + k_1 \land t_i < t_s + d_s^a - k_2 \right) \implies [e]_{i}^s \right) \right.\\
+  & && && \; \; \; \; \; \; \; \; \land \left( \left( t_{i-1} < t_s + k_1 \land t_i \geq t_s + k_1 \right) \implies [e]_{i-1}^s \right)\\
+  & && && \; \; \; \; \; \; \; \; \left. \land \; q_{i+1}^{s, \xi} \right)\\
+  & && && \land \boldsymbol{\left( q_{i+1}^{s, \xi} \implies true \right)}\\ \\
+  & && \land \bigwedge\limits_{\xi \equiv [\text{end}-k_1, \text{end}-k_2] \; e \in a} &&\left( q_i^{s, \xi} \implies \left( \left( t_i \geq t_s + d_s^a - k_1 \land t_i < t_s + d_s^a - k_2 \right) \implies [e]_{i}^s \right) \right.\\
+  & && && \; \; \; \; \; \; \; \; \land \left( \left( t_{i-1} < t_s + d_s^a - k_1 \land t_i \geq t_s + d_s^a - k_1 \right) \implies [e]_{i-1}^s \right)\\
+  & && && \; \; \; \; \; \; \; \; \left. \land \; q_{i+1}^{s, \xi} \right)\\
+  & && && \land \boldsymbol{\left( q_{i+1}^{s, \xi} \implies true \right)} \left. \right)
+\end{align*}
+
+\begin{align*}
+  &\varphi_{i}^{\text{FA}}: \bigwedge\limits_{f \in F} \left( f_{i-1} \neq f_{i} \implies \left( \right. \right. && \!\!\!\! \bigvee\limits_{\substack{a \in A \; \text{s.t.}\\ \text{[start + k]} f \coloneqq e \in \text{a}}} \bigvee\limits_{j \in \{1, \ldots, i\}}  \!\!\!\! \left( a_j \land t_j + k = t_i \right)\\
+  & && \bigvee\limits_{\substack{a \in A \; \text{s.t.}\\ \text{[end - k]} f \coloneqq e \in \text{a}}} \bigvee\limits_{j \in \{1, \ldots, i\}}  \!\!\!\! \left( a_j \land t_j + d_j^a - k = t_i \right) \\
+  & && \bigvee\limits_{\text{[start + k]} f \coloneqq e \in \text{TILS}} \left( k = t_i \right)\\
+  & && \left. \left. \bigvee\limits_{\substack{a \in inst\_A \; \text{s.t.}\\ f \coloneqq e \in \text{a}}} a_i \right) \right)\\
+\end{align*}
+
+\begin{align*}
+  &\varphi_{i}^{\text{GOALS}}: && \bigwedge\limits_{[\text{start}+k_1, \text{start}+k_2] \; e \in G} &&\left( \left(t_i \geq k_1 \land t_i < k_2 \right) \implies [e]_{i} \right)\\
+  & && && \land \left( \left( t_{i-1} < k_1 \land t_i \geq k_1 \right) \implies [e]_{i-1} \right)\\
+  & && && \land \left( k_2 \leq t_{last} \right) \\ \\
+  & &&\land \bigwedge\limits_{[\text{start}+k, \text{end}] \; e \in G} &&\left( \left( t_i \geq k \right) \implies [e]_{i} \right)\\
+  & && && \land \left( \left( t_{i-1} < k \land t_i \geq k \right) \implies [e]_{i-1} \right)\\ \\
+  & &&\land \boldsymbol{\bigwedge\limits_{[\text{end}] \; e \in G}} &&\boldsymbol{\left( [e]_{i} \right)}\\
+\end{align*}
+
+
+
+Notes: \\
+* in case of open intervals some relational operators may be strict.\\
+* $[e]_i$ means expression evaluated with fluents values at step $i$.\\
+* $[e]_i^s$ means expression evaluated with fluents values at step $i$, and action parameters values at step $s$.
+\end{document}
