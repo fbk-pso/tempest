@@ -14,7 +14,7 @@ class IncrementalEncoder(BaseEncoder):
 
     @lru_cache(maxsize=None)
     def vcg(self):
-        return self.mgr.FreshSymbol(template="vcg")
+        return self.mgr.FreshSymbol(template="vcg%d")
 
     def encode_incremental_durative_action(self, action, i):
         l = []
@@ -100,7 +100,7 @@ class IncrementalEncoder(BaseEncoder):
 
         # Action effects
         for t, _ in action.effects.items():
-            temp_l.append(self.mgr.GT(self.encode_tp(action, t.lower, i, None, True), self.t_last()))
+            temp_l.append(self.mgr.GT(self.encode_tp(action, t, i, None, True), self.t_last()))
 
         return self.mgr.Implies(self.a(action, i), self.mgr.And(temp_l))
 
@@ -167,7 +167,7 @@ class IncrementalEncoder(BaseEncoder):
                 res.append(self.mgr.Implies(self.chain_var(action, ev, i, 0), self.mgr.Or(effect_performed_in_abstract_step, self.chain_var(action, ev, i+1, 0))))
                 temp_res.append(self.mgr.Implies(self.chain_var(action, ev, i+1, 0), self.a(action, i+1)))
 
-        return res, temp_res
+        return self.mgr.And(res), self.mgr.And(temp_res)
 
 
     def encode_step_zero(self) -> Optional[Any]:
@@ -264,7 +264,7 @@ class IncrementalEncoder(BaseEncoder):
                     temp_res.append(self.encode_abstract_instantaneous_action(a, i+1))
                 elif isinstance(a, DurativeAction):
                     temp_res.append(self.encode_abstract_durative_action(a, i+1))
-            temp_res.append(self.mgr.Iff(self.vcg(), self.uses_abstact_step(i)))
+            temp_res.append(self.mgr.Iff(self.vcg(), self.uses_abstact_step(i, None)))
             temp_res.append(self.phi_sched(i+1))
 
         # Timed goals
@@ -286,16 +286,17 @@ class IncrementalEncoder(BaseEncoder):
         # Goals
         if self.optimal:
             g = self.em.And(self.problem.goals)
-            temp_res.append(self.mgr.Or((self.fluent_mod(exp, None, None) for exp in self._get_sorted_free_vars(g)), self.to_smt(g, i, 0)))
+            temp_res.append(self.mgr.Or([self.fluent_mod(exp, None, None) for exp in self._get_sorted_free_vars(g)] + [self.to_smt(g, i, 0)]))
         else:
             temp_res.append(
                 self.to_smt(self.em.And(self.problem.goals), i, 0, scope=None)
             )
 
         # fluent_mod variables
-        for mod_f, (fluent, fluent_exp) in self.fluent_mod_var.items():
-            f, t_f = self.encode_fluent_mod_formula(fluent, fluent_exp, i)
-            res.append(f)
-            temp_res.append(t_f)
+        if self.optimal:
+            for mod_f, (fluent, fluent_exp) in self.fluent_mod_var.items():
+                f, t_f = self.encode_fluent_mod_formula(fluent, fluent_exp, i)
+                res.append(f)
+                temp_res.append(t_f)
 
         return self.mgr.And(res), temp_res

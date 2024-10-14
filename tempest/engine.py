@@ -309,7 +309,7 @@ class TempestOptimal(_BaseEngine):
                 optimization_result = omt.optimize(minimization_goal)
                 if optimization_result is not None:
                     model, makespan = optimization_result
-                    uses_abstract_step = model.get_value(encoder._uses_abstact_step(h)).is_true()
+                    uses_abstract_step = model.get_value(encoder.uses_abstact_step(h-1, None if self.incremental else h)).is_true()
                     if uses_abstract_step:
                         elapsed_time = time() - start_time
                         if output_stream is not None:

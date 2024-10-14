@@ -10,7 +10,7 @@ from pysmt.optimization.goal import MaxSMTGoal, MinMaxGoal
 import unified_planning as up
 from unified_planning.engines import CompilationKind
 from unified_planning.exceptions import UPNoSuitableEngineAvailableException
-from unified_planning.model import DurativeAction, FNode, Action, Timing, InstantaneousAction, StartTiming, GlobalEndTiming, Effect, Problem, Parameter, TimeInterval, Fluent
+from unified_planning.model import DurativeAction, FNode, Action, Timing, InstantaneousAction, StartTiming, GlobalEndTiming, Effect, Problem, Parameter, TimeInterval, Fluent, MinimizeActionCosts
 from unified_planning.model.fluent import get_all_fluent_exp
 from unified_planning.model.types import domain_size, domain_item
 from unified_planning.model.walkers import Simplifier, AnyGetter
@@ -127,7 +127,7 @@ class BaseEncoder(ABC):
         return self.symenc.duration(action, i)
 
     def encode_tp(self, action: Action, t: Timing, i: int, h: Optional[int], abstract: bool = False):
-        smt_t = self.t(i) if (h is None and not abstract) or i < h else self.t_a(action, h)
+        smt_t = self.t(i) if (h is None and not abstract) or (h is not None and i < h) else self.t_a(action, h)
         smt_dur = self.dur(action, i)
         if t.is_from_start():
             if t.delay != 0:
@@ -715,25 +715,26 @@ class BaseEncoder(ABC):
 
         return self.mgr.Or(sub_res)
 
-    def uses_abstact_step(self, h: int):
+    def uses_abstact_step(self, i: int, h: Optional[int]):
         res = []
 
-        last_concrete_step_time = self.t(h-1)
+        last_concrete_step_time = self.t(i)
         for g in self.problem.goals:
-            res.append(self.to_smt(g, h-1))
+            res.append(self.to_smt(g, i))
 
-        res.append(self.encode_timed_goals(h, False))
+        for it, lg in self.problem.timed_goals.items():
+            res.append(self.mgr.LE(self.encode_problem_tp(it.upper, h), self.t(i)))
 
         for t in self.problem.timed_effects.keys():
             res.append(self.mgr.LE(self.encode_problem_tp(t, h), last_concrete_step_time))
 
         for act in self.problem.actions:
             if isinstance(act, DurativeAction):
-                for i in range(1, h):
-                    a_i = self.a(act, i)
-                    end_a_i = self.mgr.Plus(self.t(i), self.dur(act, i))
-                    ends_before_abstract = self.mgr.LE(end_a_i, last_concrete_step_time)
-                    res.append(self.mgr.Implies(a_i, ends_before_abstract))
+                for j in range(1, i+1):
+                    a_j = self.a(act, j)
+                    end_a_j = self.mgr.Plus(self.t(j), self.dur(act, j))
+                    ends_before_abstract = self.mgr.LE(end_a_j, last_concrete_step_time)
+                    res.append(self.mgr.Implies(a_j, ends_before_abstract))
 
         return self.mgr.Not(self.mgr.And(res))
 

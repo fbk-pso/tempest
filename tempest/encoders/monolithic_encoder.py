@@ -194,4 +194,4 @@ class MonolithicEncoder(BaseEncoder):
         return None, res
 
     def encode_density_constraints(self, h: int):
-        return self.mgr.Implies(self.uses_abstact_step(h), self.mgr.And([self.encode_density_constraint(i) for i in range(1, h)]))
+        return self.mgr.Implies(self.uses_abstact_step(h-1, h), self.mgr.And([self.encode_density_constraint(i) for i in range(1, h)]))
