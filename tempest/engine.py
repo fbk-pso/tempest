@@ -171,9 +171,9 @@ class TempestNonIncremental(TempestEngine):
         super().__init__(False, horizon)
 
 
-class TempestOptimalEngine(_BaseEngine):
+class TempestOptimal(_BaseEngine):
     """Implementation of the TemPEST Optimal Engine."""
-    def __init__(self, incremental=False, horizon=None, ground_abstract_step: bool = True, grounder_name: Optional[str] = None, sat_before_opt: bool = True):
+    def __init__(self, incremental=True, horizon=None, ground_abstract_step: bool = True, grounder_name: Optional[str] = None, sat_before_opt: bool = True):
         super().__init__(incremental, horizon)
         self.ground_abstract_step = ground_abstract_step
         self.grounder_name = grounder_name
@@ -199,7 +199,7 @@ class TempestOptimalEngine(_BaseEngine):
 
     @staticmethod
     def supports(problem_kind: "up.model.ProblemKind") -> bool:
-        return problem_kind <= TempestOptimalEngine.supported_kind()
+        return problem_kind <= TempestOptimal.supported_kind()
 
     @staticmethod
     def satisfies(optimality_guarantee: "up.engines.OptimalityGuarantee") -> bool:
@@ -272,7 +272,9 @@ class TempestOptimalEngine(_BaseEngine):
         # Optimality part
         modify_horizon = lambda x: x
         if self.incremental:
-            raise NotImplementedError()
+            encoder = IncrementalEncoder(problem, pysmt_env=pysmt_env, epsilon=epsilon, optimal=True,
+                ground_abstract_step=self.ground_abstract_step, grounder_name=self.grounder_name)
+            modify_horizon = lambda x: x-1
         else:
             encoder = MonolithicEncoder(problem, pysmt_env=pysmt_env, epsilon=epsilon, optimal=True,
                 ground_abstract_step=self.ground_abstract_step, grounder_name=self.grounder_name)
@@ -342,16 +344,22 @@ class TempestOptimalEngine(_BaseEngine):
         )
 
 
-class TempestLiftedAbstractStep(TempestOptimalEngine):
-    def __init__(self, incremental = False, horizon=None, sat_before_opt=True):
+class TempestOptimalNonIncremental(TempestOptimal):
+    """Implementation of the TemPEST Optimal Engine."""
+    def __init__(self, horizon=None, ground_abstract_step: bool = True, grounder_name: Optional[str] = None, sat_before_opt: bool = True):
+        super().__init__(False, horizon, ground_abstract_step, grounder_name, sat_before_opt)
+
+
+class TempestLiftedAbstractStep(TempestOptimal):
+    def __init__(self, incremental=True, horizon=None, sat_before_opt=True):
         super().__init__(incremental, horizon, False, None, sat_before_opt)
 
 
-class TempestOnlyOMT(TempestOptimalEngine):
-    def __init__(self, incremental=False, horizon=None, ground_abstract_step=True, grounder_name=None):
+class TempestOnlyOMT(TempestOptimal):
+    def __init__(self, incremental=True, horizon=None, ground_abstract_step=True, grounder_name=None):
         super().__init__(incremental, horizon, ground_abstract_step, grounder_name, False)
 
 
-class TempestLiftedAbstractStepOnlyOMT(TempestOptimalEngine):
-    def __init__(self, incremental=False, horizon=None):
+class TempestLiftedAbstractStepOnlyOMT(TempestOptimal):
+    def __init__(self, incremental=True, horizon=None):
         super().__init__(incremental, horizon, False, None, False)
