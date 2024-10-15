@@ -134,7 +134,7 @@ class IncrementalEncoder(BaseEncoder):
         temp_res = []
         abstract_fluent_touchers = self.abstract_step_touchers.get(fluent, None)
         if abstract_fluent_touchers is None:
-            return self.mgr.FALSE()
+            return self.mgr.FALSE(), self.mgr.FALSE()
 
         if self.ground_abstract_step:
             assert fluent_exp is not None
@@ -194,7 +194,7 @@ class IncrementalEncoder(BaseEncoder):
                     res.append(self.mgr.Iff(mod_f, self.encode_fluent_mod_formula_step_zero(fluent, fluent_exp)))
         else:
             for fluent in self.problem.fluents:
-                mod_f = self._fluent_mod(fluent)
+                mod_f = self._fluent_mod(fluent, None)
                 res.append(self.mgr.Iff(mod_f, self.encode_fluent_mod_formula_step_zero(fluent, None)))
 
         return self.mgr.And(res)
