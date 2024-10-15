@@ -27,7 +27,7 @@ class MonolithicEncoder(BaseEncoder):
 
         # Action conditions
         for it, lc in action.conditions.items():
-            c = self.mgr.And(lc)
+            c = self.em.And(lc)
             for k in range(i, h):
                 l.append(self.encode_condition_or_goal(action, it, c, k, i, h))
             if self.optimal:
