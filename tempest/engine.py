@@ -328,7 +328,7 @@ class TempestOptimal(_BaseEngine):
                             is_in_timeout = True
                             break
                     else:
-                        plan = encoder.extract_plan(model, modify_horizon(h))
+                        plan = encoder.extract_plan(model, h)
                         assert plan is not None
                         status = PlanGenerationResultStatus.SOLVED_OPTIMALLY if problem.quality_metrics  else PlanGenerationResultStatus.SOLVED_SATISFICING
                         res = PlanGenerationResult(
