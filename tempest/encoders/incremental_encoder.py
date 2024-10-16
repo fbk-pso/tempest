@@ -38,7 +38,10 @@ class IncrementalEncoder(BaseEncoder):
                     condition_last_concrete_step = self.to_smt(c, i, w, action)
                     condition_abstract_step = self.mgr.Or((self.fluent_mod(exp, action, w) for exp in self._get_sorted_free_vars(c)))
                     temp_l.append(
-                        self.mgr.Implies(self.mgr.GT(smt_tp_1, self.t_last()), self.mgr.Or(condition_last_concrete_step, condition_abstract_step))
+                        self.mgr.Implies(
+                            self.chain_var(action, ev, i + 1, w),
+                            self.mgr.Implies(self.mgr.GT(smt_tp_1, self.t_last()), self.mgr.Or(condition_last_concrete_step, condition_abstract_step))
+                        )
                     )
                 else:
                     temp_l.append(
@@ -64,9 +67,12 @@ class IncrementalEncoder(BaseEncoder):
             conjunction.append(self.chain_var(action, ev, i, i))
             for w in range(1, i + 1):
                 if self.optimal:
-                    smt_tp_1 = self.encode_tp(action, it.lower, w, None)
+                    smt_tp_1 = self.encode_tp(action, t, w, None)
                     temp_l.append(
-                        self.mgr.GT(smt_tp_1, self.t_last())
+                        self.mgr.Implies(
+                            self.chain_var(action, ev, i + 1, w),
+                            self.mgr.GT(smt_tp_1, self.t_last())
+                        )
                     )
                 else:
                     temp_l.append(
@@ -258,7 +264,7 @@ class IncrementalEncoder(BaseEncoder):
             res.append(c)
 
         if self.optimal:
-            res.append(self.mgr.Implies(self.mgr.Not(self.vcg()), self.encode_density_constraint(i)))
+            res.append(self.mgr.Implies(self.vcg(), self.encode_density_constraint(i)))
             for a in self.abstract_step_actions:
                 if isinstance(a, InstantaneousAction):
                     temp_res.append(self.encode_abstract_instantaneous_action(a, i+1))

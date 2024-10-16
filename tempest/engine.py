@@ -251,11 +251,14 @@ class TempestOptimal(_BaseEngine):
                         smt.add_assertion(formula)
                     if smt.solve(assumptions):
                         first_sat_step = h
+                        elapsed_time = time() - start_time
+                        if output_stream is not None:
+                            output_stream.write(f"SAT solution with bound {modify_horizon(h)}. Elapsed_time: {elapsed_time:.3f} seconds\n")
                     else:
                         h += 1
-                    elapsed_time = time() - start_time
-                    if output_stream is not None:
-                        output_stream.write(f"No SAT solution with bound {h}. Elapsed_time: {elapsed_time:.3f} seconds\n")
+                        elapsed_time = time() - start_time
+                        if output_stream is not None:
+                            output_stream.write(f"No SAT solution with bound {modify_horizon(h)}. Elapsed_time: {elapsed_time:.3f} seconds\n")
                     if timeout is not None and elapsed_time > timeout:
                         is_in_timeout = True
                     if first_sat_step > 0 or is_in_timeout:
@@ -302,24 +305,30 @@ class TempestOptimal(_BaseEngine):
                 omt.push()
                 for a in assumptions:
                     omt.add_assertion(a)
-                minimization_goal, extra_constraints = encoder.objective_to_minimize(h)
+                if self.incremental:
+                    minimization_goal, extra_constraints = encoder.objective_to_minimize(modify_horizon(h), None)
+                else:
+                    minimization_goal, extra_constraints = encoder.objective_to_minimize(h-1, h)
                 if extra_constraints is not None:
                     for ec in extra_constraints:
                         omt.add_assertion(ec)
                 optimization_result = omt.optimize(minimization_goal)
                 if optimization_result is not None:
                     model, makespan = optimization_result
-                    uses_abstract_step = model.get_value(encoder.uses_abstact_step(h-1, None if self.incremental else h)).is_true()
+                    if self.incremental:
+                        uses_abstract_step = model.get_value(encoder.uses_abstact_step(modify_horizon(h), None)).is_true()
+                    else:
+                        uses_abstract_step = model.get_value(encoder.uses_abstact_step(h-1, h)).is_true()
                     if uses_abstract_step:
                         elapsed_time = time() - start_time
                         if output_stream is not None:
-                            output_stream.write(f"Makespan with bound {h}: {makespan}. Elapsed_time: {elapsed_time:.3f} seconds\n")
+                            output_stream.write(f"Makespan with bound {modify_horizon(h)}: {makespan}. Elapsed_time: {elapsed_time:.3f} seconds\n")
                         h += 1
                         if timeout is not None and elapsed_time > timeout:
                             is_in_timeout = True
                             break
                     else:
-                        plan = encoder.extract_plan(model, h)
+                        plan = encoder.extract_plan(model, modify_horizon(h))
                         assert plan is not None
                         status = PlanGenerationResultStatus.SOLVED_OPTIMALLY if problem.quality_metrics  else PlanGenerationResultStatus.SOLVED_SATISFICING
                         res = PlanGenerationResult(

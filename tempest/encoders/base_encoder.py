@@ -823,25 +823,25 @@ class BaseEncoder(ABC):
         fluents = fve.get(exp)
         return tuple(sorted(fluents, key=str))
 
-    def objective_to_minimize(self, h: int):
+    def objective_to_minimize(self, i: int, h: Optional[int]):
         assert len(self.problem.quality_metrics) < 2, "Problem has more than one quality metric"
         metric = self.problem.quality_metrics[0] if self.problem.quality_metrics else None
         if metric is None or metric.is_minimize_makespan():
-            terms = [self.t(h-1)]
+            terms = [self.t(i)]
             timed_goals_timings = chain(*map(lambda x: (x.lower, x.upper), self.problem.timed_goals.keys()))
             problem_timings = chain(timed_goals_timings, self.problem.timed_effects.keys())
             for timing in filter(lambda x: x.is_from_start(), problem_timings):
                 assert isinstance(timing, Timing)
                 terms.append(self.encode_problem_tp(timing, h))
             for a in self.abstract_step_actions:
-                t_a = self.t_a(a, h)
+                t_a = self.t_a(a, i+1)
                 if isinstance(a, InstantaneousAction):
                     terms.append(t_a)
                 else:
-                    terms.append(self.mgr.Plus(t_a, self.dur(a, h)))
+                    terms.append(self.mgr.Plus(t_a, self.dur(a, i+1)))
             return MinMaxGoal(terms), None
         elif metric.is_minimize_action_costs():
-            return self._get_max_smt_goal(metric, h), None
+            return self._get_max_smt_goal(metric, i+1), None
         else:
             raise NotImplementedError(f"Metric {metric} not supported")
 
