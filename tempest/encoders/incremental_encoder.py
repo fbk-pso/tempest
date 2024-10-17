@@ -49,10 +49,6 @@ class IncrementalEncoder(BaseEncoder):
                             self.chain_var(action, ev, i + 1, w), self.mgr.Bool(True)
                         )
                     )
-                rhs = self.encode_tp(action, it.upper, w, None)
-                l.append(
-                    self.mgr.Implies(self.a(action, w), self.mgr.LE(rhs, self.t_last()))
-                )
                 formula = self.encode_condition_or_goal(action, it, c, i, w, None)
                 l.append(
                     self.mgr.Implies(
