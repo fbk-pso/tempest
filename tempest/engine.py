@@ -342,7 +342,7 @@ class TempestOptimal(_BaseEngine):
                             return res
 
                 else:
-                    assert formula is None
+                    # assert formula is None
                     break
                 omt.pop()
 

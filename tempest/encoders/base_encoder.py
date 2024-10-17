@@ -402,7 +402,7 @@ class BaseEncoder(ABC):
 
     def extract_plan(self, model: pysmt.solvers.solver.Model, h: int) -> Union[SequentialPlan, TimeTriggeredPlan]:
         res = []
-        for i in range(h):
+        for i in range(1, h):
             t = model.get_py_value(self.t(i))
             for a in self.problem.actions:
                 if model.get_py_value(self.a(a, i)):
