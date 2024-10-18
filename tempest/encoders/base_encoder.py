@@ -680,7 +680,6 @@ class BaseEncoder(ABC):
                     ))
             else:
                 assert isinstance(a, DurativeAction)
-                sub_res = []
                 for interval, cl in a.conditions.items():
                     timing = interval.lower
                     empty_interval_operand = self.mgr.LE
