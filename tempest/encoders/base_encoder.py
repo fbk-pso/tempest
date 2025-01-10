@@ -5,11 +5,12 @@ from functools import lru_cache
 from abc import ABC, abstractmethod
 import warnings
 import pysmt
+from pysmt.optimization.goal import MaxSMTGoal, MinMaxGoal
 
 import unified_planning as up
 from unified_planning.engines import CompilationKind
 from unified_planning.exceptions import UPNoSuitableEngineAvailableException
-from unified_planning.model import DurativeAction, FNode, Action, Timing, InstantaneousAction, StartTiming, GlobalEndTiming, Effect, Problem, Parameter, TimeInterval, Fluent
+from unified_planning.model import DurativeAction, FNode, Action, Timing, InstantaneousAction, StartTiming, GlobalEndTiming, Effect, Problem, Parameter, TimeInterval, Fluent, MinimizeActionCosts
 from unified_planning.model.fluent import get_all_fluent_exp
 from unified_planning.model.types import domain_size, domain_item
 from unified_planning.model.walkers import Simplifier, AnyGetter
@@ -58,7 +59,7 @@ class BaseEncoder(ABC):
 
         self.abstract_step_actions = grounded_problem.actions
         self.abstract_step_metrics = grounded_problem.quality_metrics
-        self.fluent_mod_formulae_mapping: Dict[Any, Any] = {}
+        self.fluent_mod_var: Dict[Any, Any] = {}
 
         self.converters = {}
 
@@ -125,8 +126,8 @@ class BaseEncoder(ABC):
     def dur(self, action: Action, i: int):
         return self.symenc.duration(action, i)
 
-    def encode_tp(self, action: Action, t: Timing, i: int, h: Optional[int]):
-        smt_t = self.t(i) if h is None or i < h else self.t_a(action, h)
+    def encode_tp(self, action: Action, t: Timing, i: int, h: Optional[int], abstract: bool = False):
+        smt_t = self.t(i) if (h is None and not abstract) or (h is not None and i < h) else self.t_a(action, h)
         smt_dur = self.dur(action, i)
         if t.is_from_start():
             if t.delay != 0:
@@ -140,7 +141,7 @@ class BaseEncoder(ABC):
                 tp = self.mgr.Plus(smt_t, smt_dur)
         return tp
 
-    def encode_problem_tp(self, t: Timing, h: int):
+    def encode_problem_tp(self, t: Timing, h: Optional[int]):
         if t.is_from_start():
             return self.mgr.Real(t.delay)
         else:
@@ -175,13 +176,9 @@ class BaseEncoder(ABC):
         eff = [self.mgr.Equals(self.t(i), smt_tp)]
         for e in le:
             eff.append(self.encode_effect(action, e, i, w))
-        effect_formula = self.mgr.And(eff)
-        if self.optimal:
-            effect_in_abstract_step = self.mgr.LT(self.t(h-1), smt_tp)
-            effect_formula = self.mgr.Or(effect_formula, effect_in_abstract_step)
-        return effect_formula
+        return self.mgr.And(eff)
 
-    def encode_condition_or_goal(self, action: Optional[Action], it: TimeInterval, c: FNode, i: int, w: Optional[int], h: int):
+    def encode_condition_or_goal(self, action: Optional[Action], it: TimeInterval, c: FNode, i: int, w: Optional[int], h: Optional[int]):
         if action is None:
             smt_tp_1 = self.encode_problem_tp(it.lower, h)
             smt_tp_2 = self.encode_problem_tp(it.upper, h)
@@ -214,19 +211,6 @@ class BaseEncoder(ABC):
             cond_2 = self.mgr.And(self.mgr.LT(self.t(i), smt_tp_2), self.mgr.GE(self.t(i), smt_tp_1))
             formula_2 = self.mgr.Implies(cond_2, self.to_smt(c, i, w, scope=action))
             formula = self.mgr.And(formula_1, formula_2)
-
-        if self.optimal:
-            last_concrete_step_time = self.t(h-1)
-            if last_concrete_step_time != smt_tp_1:
-
-                start_condition_after_last_concrete_step = self.mgr.LT(last_concrete_step_time, smt_tp_1)
-
-                condition_last_concrete_step = self.to_smt(c, h-1, w, action)
-
-                condition_abstract_step = self.mgr.Or((self.fluent_mod(exp, action, w,h) for exp in self._get_sorted_free_vars(c)))
-
-                extra_formula = self.mgr.Implies(start_condition_after_last_concrete_step, self.mgr.Or(condition_last_concrete_step, condition_abstract_step))
-                formula = self.mgr.And(formula, extra_formula)
 
         return formula
 
@@ -418,7 +402,7 @@ class BaseEncoder(ABC):
 
     def extract_plan(self, model: pysmt.solvers.solver.Model, h: int) -> Union[SequentialPlan, TimeTriggeredPlan]:
         res = []
-        for i in range(h):
+        for i in range(1, h):
             t = model.get_py_value(self.t(i))
             for a in self.problem.actions:
                 if model.get_py_value(self.a(a, i)):
@@ -588,66 +572,19 @@ class BaseEncoder(ABC):
         return self.mgr.LE(self.mgr.Plus(self.t(i - 1), self.mgr.Real(self.epsilon)), self.t(i))
 
     @lru_cache(maxsize=None)
-    def _fluent_mod_formula(self, fluent: Fluent, fluent_exp: Optional[FNode], h: int):
-        assert not (self.ground_abstract_step and self.param_getter.get(fluent_exp))
-        res = []
-        abstract_fluent_touchers = self.abstract_step_touchers.get(fluent, None)
-        if abstract_fluent_touchers is None:
-            return self.mgr.FALSE()
-
-        if self.ground_abstract_step:
-            assert fluent_exp is not None
-            fluent_touchers_gen = abstract_fluent_touchers.get(fluent_exp, [])
-        else:
-            assert fluent_exp is None
-            fluent_touchers_gen = chain(*abstract_fluent_touchers.values())
-
-        for action, timing, eff in fluent_touchers_gen:
-            if action is None:
-                til_in_abstract_step = self.mgr.GT(self.encode_problem_tp(timing, h), self.t(h-1))
-                res.append(til_in_abstract_step)
-            elif timing is None:
-                assert isinstance(action, InstantaneousAction)
-                action_in_abstract_step = self.a(action, h)
-                res.append(action_in_abstract_step)
-            else:
-                assert isinstance(action, DurativeAction)
-                last_concrete_step_time = self.t(h-1)
-                concrete_action, parameters_assignment = action, {}
-                if self.ground_abstract_step:
-                    concrete_ai = self.map_back_action_instance(action())
-                    concrete_action = concrete_ai.action
-                    parameters_assignment = dict(zip(action.parameters, concrete_ai.actual_parameters))
-                    # TODO: future improvements, it would be nice to remove action parameters that do not
-                    # appear in the effect from the assignment mapping
-                for i in range(1, h):
-                    a_i = self.a(concrete_action, i)
-                    parameters_equality = []
-                    for param_exp, obj_exp in parameters_assignment.items():
-                        parameters_equality.append(self.mgr.EqualsOrIff(self.to_smt(param_exp, i, i, scope=concrete_action), self.to_smt(obj_exp, i)))
-                    p_eq = self.mgr.And(parameters_equality)
-                    effect_time = self.encode_tp(concrete_action, timing, i, h)
-                    effect_in_abstract_step = self.mgr.GT(effect_time, last_concrete_step_time)
-                    effect_performed_in_abstract_step = self.mgr.And(a_i, p_eq, effect_in_abstract_step)
-                    res.append(effect_performed_in_abstract_step)
-                # No need to check for parameters because either the action is grounded or the fluent_mod is considered on the lifted fluent
-                a_h = self.a(action, h)
-                res.append(a_h)
-
-        fluent_mod_formula = self.mgr.Or(res)
+    def _fluent_mod(self, fluent: Fluent, fluent_exp: Optional[FNode]):
         naming = fluent if fluent_exp is None else fluent_exp
-        fluent_mod_var = self.mgr.FreshSymbol(template=f"phi_{h}_mod_{naming}%d")
-        self.fluent_mod_formulae_mapping[fluent_mod_formula] = fluent_mod_var
-        assert fluent_mod_var is not None
+        fluent_mod_var = self.mgr.FreshSymbol(template=f"mod_{naming}%d")
+        self.fluent_mod_var[fluent_mod_var] = fluent, fluent_exp
         return fluent_mod_var
 
     @lru_cache(maxsize=None)
-    def fluent_mod(self, fluent_exp: FNode, a: Optional[Action], w: Optional[int], h: int):
+    def fluent_mod(self, fluent_exp: FNode, a: Optional[Action], w: Optional[int]):
         fluent_parameters = self._get_sorted_parameters(fluent_exp, a)
         if not self.ground_abstract_step:
-            return self._fluent_mod_formula(fluent_exp.fluent(), None, h)
+            return self._fluent_mod(fluent_exp.fluent(), None)
         elif not fluent_parameters:
-            return self._fluent_mod_formula(fluent_exp.fluent(), fluent_exp, h)
+            return self._fluent_mod(fluent_exp.fluent(), fluent_exp)
 
         res = []
         assert a is not None and w is not None
@@ -657,7 +594,7 @@ class BaseEncoder(ABC):
             sub_res = []
             assignments = dict(zip(fluent_parameters, parameters_value))
             ground_fluent_exp = fluent_exp.substitute(assignments)
-            sub_res.append(self._fluent_mod_formula(ground_fluent_exp.fluent(), ground_fluent_exp, h))
+            sub_res.append(self._fluent_mod(ground_fluent_exp.fluent(), ground_fluent_exp))
             for param_exp, obj_exp in assignments.items():
                 sub_res.append(self.mgr.EqualsOrIff(self.to_smt(param_exp, w, w, scope=a), self.to_smt(obj_exp, w)))
             res.append(self.mgr.And(sub_res))
@@ -684,7 +621,7 @@ class BaseEncoder(ABC):
         for p in action.preconditions:
             condition_last_concrete_step = self.to_smt(p, h-1, h, scope=action)
 
-            condition_abstract_step = self.mgr.Or((self.fluent_mod(exp, action, h, h) for exp in self._get_sorted_free_vars(p)))
+            condition_abstract_step = self.mgr.Or((self.fluent_mod(exp, action, h) for exp in self._get_sorted_free_vars(p)))
             l.append(self.mgr.Or(condition_last_concrete_step, condition_abstract_step))
         return self.mgr.Implies(a_h, self.mgr.And(l))
 
@@ -743,7 +680,6 @@ class BaseEncoder(ABC):
                     ))
             else:
                 assert isinstance(a, DurativeAction)
-                sub_res = []
                 for interval, cl in a.conditions.items():
                     timing = interval.lower
                     empty_interval_operand = self.mgr.LE
@@ -760,6 +696,47 @@ class BaseEncoder(ABC):
 
         return self.mgr.And(res)
 
+    def encode_density_constraint(self, i: int):
+        sub_res = []
+        t_i = self.t(i)
+
+        for t in self.problem.timed_effects.keys():
+            sub_res.append(self.mgr.Equals(self.encode_problem_tp(t, i), t_i))
+
+        for act in self.problem.actions:
+            sub_res.append(self.a(act, i))
+            if isinstance(act, DurativeAction):
+                for s in range(1, i):
+                    a_s = self.a(act, s)
+                    for t in act.effects.keys():
+                        effect_at_t_i = self.mgr.Equals(self.encode_tp(act, t, s, i), t_i)
+                        sub_res.append(self.mgr.And(a_s, effect_at_t_i))
+
+        return self.mgr.Or(sub_res)
+
+    def uses_abstact_step(self, i: int, h: Optional[int]):
+        res = []
+
+        last_concrete_step_time = self.t(i)
+        for g in self.problem.goals:
+            res.append(self.to_smt(g, i))
+
+        for it, lg in self.problem.timed_goals.items():
+            res.append(self.mgr.LE(self.encode_problem_tp(it.upper, h), self.t(i)))
+
+        for t in self.problem.timed_effects.keys():
+            res.append(self.mgr.LE(self.encode_problem_tp(t, h), last_concrete_step_time))
+
+        for act in self.problem.actions:
+            if isinstance(act, DurativeAction):
+                for j in range(1, i+1):
+                    a_j = self.a(act, j)
+                    end_a_j = self.mgr.Plus(self.t(j), self.dur(act, j))
+                    ends_before_abstract = self.mgr.LE(end_a_j, last_concrete_step_time)
+                    res.append(self.mgr.Implies(a_j, ends_before_abstract))
+
+        return self.mgr.Not(self.mgr.And(res))
+
     def _phi_sched_parametrized_formula(self, phi: FNode, t: Optional[Timing], a: Optional[Action], w: Optional[int], h: int):
         res = []
         if a is None:
@@ -775,7 +752,7 @@ class BaseEncoder(ABC):
         for fluent_exp in self._get_sorted_free_vars(phi):
             fluent_params = self._get_sorted_parameters(fluent_exp, a)
             if not fluent_params or not self.ground_abstract_step:
-                res.append(self.mgr.And(self.fluent_mod(fluent_exp, a, w, h), self._phi_sched_formula(phi_time, fluent_exp, h)))
+                res.append(self.mgr.And(self.fluent_mod(fluent_exp, a, w), self._phi_sched_formula(phi_time, fluent_exp, h)))
             else:
                 assert w < h, "parameters should come only from actions started in concrete steps"
                 for parameter_assignment in self._get_possible_parameters_assignments(fluent_params):
@@ -785,7 +762,7 @@ class BaseEncoder(ABC):
                         p_eq.append(self.mgr.EqualsOrIff(self.to_smt(param_exp, w, w, scope=a), self.to_smt(obj_exp, w)))
                     parameters_equality = self.mgr.And(p_eq)
                     ground_fluent_exp = fluent_exp.substitute(assignments)
-                    res.append(self.mgr.And(parameters_equality, self.fluent_mod(ground_fluent_exp, a, w, h), self._phi_sched_formula(phi_time, ground_fluent_exp, h)))
+                    res.append(self.mgr.And(parameters_equality, self.fluent_mod(ground_fluent_exp, a, w), self._phi_sched_formula(phi_time, ground_fluent_exp, h)))
 
         return self.mgr.Or(res)
 
@@ -844,3 +821,70 @@ class BaseEncoder(ABC):
         fve = self.problem.environment.free_vars_extractor
         fluents = fve.get(exp)
         return tuple(sorted(fluents, key=str))
+
+    def objective_to_minimize(self, i: int, h: Optional[int]):
+        assert len(self.problem.quality_metrics) < 2, "Problem has more than one quality metric"
+        metric = self.problem.quality_metrics[0] if self.problem.quality_metrics else None
+        if metric is None or metric.is_minimize_makespan():
+            terms = [self.t(i)]
+            timed_goals_timings = chain(*map(lambda x: (x.lower, x.upper), self.problem.timed_goals.keys()))
+            problem_timings = chain(timed_goals_timings, self.problem.timed_effects.keys())
+            for timing in filter(lambda x: x.is_from_start(), problem_timings):
+                assert isinstance(timing, Timing)
+                terms.append(self.encode_problem_tp(timing, h))
+            for a in self.abstract_step_actions:
+                t_a = self.t_a(a, i+1)
+                if isinstance(a, InstantaneousAction):
+                    terms.append(t_a)
+                else:
+                    terms.append(self.mgr.Plus(t_a, self.dur(a, i+1)))
+            return MinMaxGoal(terms), None
+        elif metric.is_minimize_action_costs():
+            return self._get_max_smt_goal(metric, i+1), None
+        else:
+            raise NotImplementedError(f"Metric {metric} not supported")
+
+    def _get_max_smt_goal(self, metric, h: int) -> MaxSMTGoal:
+        goal = MaxSMTGoal()
+        range_lim = h if self.ground_abstract_step else h+1
+        for a in self.problem.actions:
+            for assignments, cost in self._get_action_costs(metric, a):
+                weight = cost.constant_value()
+                for i in range(range_lim):
+                    clauses = [self.a(a, i)]
+                    for param_exp, obj_exp in assignments.items():
+                        assert param_exp.is_parameter_exp()
+                        clauses.append(self.mgr.EqualsOrIff(self.to_smt(param_exp, i, scope=a), self.to_smt(obj_exp, i)))
+                    goal.add_soft_clause(self.mgr.Not(self.mgr.And(clauses)), weight)
+
+        # The cost of the action in the abstract step must be added
+        if self.ground_abstract_step:
+            grounded_metric = self.abstract_step_metrics[0]
+            assert grounded_metric.is_minimize_action_costs()
+            for a in self.abstract_step_actions:
+                cost = self.simplifier.simplify(grounded_metric.get_action_cost(a))
+                weight = cost.constant_value()
+                goal.add_soft_clause(self.mgr.Not(self.a(a, h)), weight)
+        return goal
+
+    @lru_cache(maxsize=None)
+    def _get_action_costs(self, metric: MinimizeActionCosts, action: Action) -> List[Tuple[Dict[FNode, FNode], FNode]]:
+        # This method takes the metric and the action and returns a list
+        # containing  Tuples, each Tuple contains 2 element, the first one is
+        # a Dictionary that contains as keys the action parameters and
+        # as values the object used to ground the action and generate a constant cost
+        #
+        # One important note is that this method does not generate every possible grounding of
+        # the action, but only grounds the parameters that are actually involved in the cost
+        assert isinstance(metric, MinimizeActionCosts)
+        cost = self.simplifier.simplify(metric.get_action_cost(action))
+        if cost.is_constant(): # cost does not depend on parameters
+            return [({}, cost)]
+        res = []
+        cost_parameters = self._get_sorted_parameters(cost, action)
+        for parameters_value in self._get_possible_parameters_assignments(cost_parameters):
+            assignments = dict(zip(cost_parameters, parameters_value))
+            grounded_cost = self.simplifier.simplify(cost.substitute(assignments))
+            assert grounded_cost.is_constant(), f"Non constant expression detected in ActionCosts: {action.name}, {metric.get_action_cost(action)}"
+            res.append((assignments, grounded_cost))
+        return res

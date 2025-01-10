@@ -23,7 +23,14 @@ jobs:
 
     with:
       engine-name: "tempest-opt"
-      engine-class: TempestOptimalEngine
+      engine-class: TempestOptimal
+
+  test-tempest-optimal-non-incremental:
+    uses: ./.github/workflows/test_specific_engine.yml
+
+    with:
+      engine-name: "tempest-opt-ni"
+      engine-class: TempestOptimalNonIncremental
 
   test-tempest-optimal-lifted-abstract-step:
     uses: ./.github/workflows/test_specific_engine.yml
