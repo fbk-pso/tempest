@@ -3,6 +3,9 @@ name: CI-on-push
 on:
   push
 
+env:
+  unified_planning_commit: "c0fb5f688c454889814187757641744dde24e5bc"
+
 jobs:
   unit-test:
     runs-on: ubuntu-latest
@@ -34,6 +37,16 @@ jobs:
 
       - name: Install optimsat using pysmt
         run: pysmt-install --optimsat --confirm-agreement
+
+      - name: Checkout unified-planning
+        uses: actions/checkout@v2
+        with:
+          repository: aiplan4eu/unified-planning
+          path: unified-planning
+          ref: ${{env.unified_planning_commit}}
+
+      - name: Install unified-planning
+        run: python3 -m pip install unified-planning/
 
       - name: Install tempest
         run: python3 -m pip install .
