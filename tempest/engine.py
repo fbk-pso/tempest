@@ -10,7 +10,6 @@ from unified_planning.engines import (
     PlanGenerationResult,
     Credits,
 )
-from unified_planning.engines.results import correct_plan_generation_result
 from unified_planning.plans import TimeTriggeredPlan
 from typing import IO, Callable, Optional
 from tempest.encoders import MonolithicEncoder, IncrementalEncoder
@@ -147,10 +146,7 @@ class TempestEngine(_BaseEngine):
                         plan,
                         self.name,
                     )
-                    if isinstance(plan, TimeTriggeredPlan):
-                        return correct_plan_generation_result(res, problem, None)
-                    else:
-                        return res
+                    return res
                 else:
                     elapsed_time = time() - start_time
                     if output_stream is not None:
@@ -251,7 +247,6 @@ class TempestOptimal(_BaseEngine):
                     if formula is not None:
                         smt.add_assertion(formula)
                     if smt.solve(assumptions):
-                        first_sat_step = h
                         elapsed_time = time() - start_time
                         if output_stream is not None:
                             output_stream.write(f"SAT solution with bound {h}. Elapsed_time: {elapsed_time:.3f} seconds\n")
@@ -262,13 +257,14 @@ class TempestOptimal(_BaseEngine):
                         h += 1
                     if timeout is not None and elapsed_time > timeout:
                         is_in_timeout = True
-                    if first_sat_step > 0 or is_in_timeout:
+                    if is_in_timeout:
                         break
 
             if is_in_timeout:
                 return PlanGenerationResult(
                     PlanGenerationResultStatus.TIMEOUT, None, self.name
                 )
+            first_sat_step = h
         else:
             # Start using OMT from first step
             first_sat_step = 2
@@ -289,7 +285,7 @@ class TempestOptimal(_BaseEngine):
             if step_zero is not None:
                 omt.add_assertion(step_zero)
 
-            if self.incremental:
+            if self.incremental and (self.horizon is None or first_sat_step <= self.horizon):
                 while h < first_sat_step:
                     formula, assumptions = encoder.encode_step(modify_horizon(h))
                     if formula is not None:
@@ -339,10 +335,7 @@ class TempestOptimal(_BaseEngine):
                             plan,
                             self.name,
                         )
-                        if isinstance(plan, TimeTriggeredPlan):
-                            return correct_plan_generation_result(res, problem, None)
-                        else:
-                            return res
+                        return res
 
                 else:
                     # assert formula is None

@@ -396,7 +396,7 @@ class BaseEncoder(ABC):
             smt_f = self.to_smt(f, 0)
             smt_v = self.to_smt(v, 0)
             res.append(self.mgr.EqualsOrIff(smt_f, smt_v))
-        for c in self.symenc.type_constraints[0]:
+        for c in self.symenc.type_constraints.get(0, []):
             res.append(c)
         return self.mgr.And(res)
 
