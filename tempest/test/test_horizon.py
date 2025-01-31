@@ -46,15 +46,17 @@ class TestHorizon(TestCase):
                 params["horizon"] = min_correct_horizon if "opt" not in engine else None
 
                 # Set for tests efficiency
-                if "opt" in engine:
+                if "opt" in engine and min_correct_horizon >= 3:
                     continue
 
                 with OneshotPlanner(name=engine, params=params) as planner:
-                    result = planner.solve(problem)
+                    result = planner.solve(problem, output_stream = sys.stdout)
                     self.assertIsNotNone(result.plan,  f"{problem.name}, {min_correct_horizon}, {params}")
 
     def _get_problems_with_min_horizon(self) -> Iterator[Tuple[Problem, int]]:
         for problem, min_correct_horizon in self._basic_counter():
+            yield problem, min_correct_horizon
+        for problem, min_correct_horizon in self._move_ball():
             yield problem, min_correct_horizon
 
     def _basic_counter(self) -> Iterator[Tuple[Problem, int]]:
@@ -126,3 +128,51 @@ class TestHorizon(TestCase):
             # the action starts when the previous ends so no additional step is needed
             min_correct_horizon = 2+2*i
             yield problem, min_correct_horizon
+
+    def _move_ball(self):
+        base_problem = Problem("move ball")
+        Ball = UserType("Ball")
+        Location = UserType("Location")
+
+        l1, l2, l3 = (base_problem.add_object(f"l{i}", Location) for i in range(1, 4))
+        b1, b2, b3 = (base_problem.add_object(f"b{i}", Ball) for i in range(1, 4))
+
+        robot_loaded = base_problem.add_fluent("robot_loaded", BoolType(), default_initial_value=False)
+        ball_on_robot = base_problem.add_fluent("ball_on_robot", Ball, default_initial_value=b1)
+        robot_at = base_problem.add_fluent("robot_at", Location, default_initial_value=l1)
+        ball_at = base_problem.add_fluent("ball_at", Location, default_initial_value=l1, ball=Ball)
+
+        pick = InstantaneousAction("pick", ball=Ball, l_from=Location)
+        pick.add_precondition(Not(robot_loaded))
+        pick.add_precondition(robot_at.Equals(pick.l_from))
+        pick.add_precondition(ball_at(pick.ball).Equals(pick.l_from))
+
+        pick.add_effect(robot_loaded, True)
+        pick.add_effect(ball_on_robot, pick.ball)
+
+        drop = InstantaneousAction("drop", ball=Ball, l_to=Location)
+        drop.add_precondition(robot_loaded())
+        drop.add_precondition(ball_on_robot.Equals(drop.ball))
+        drop.add_precondition(robot_at.Equals(drop.l_to))
+
+        drop.add_effect(robot_loaded, False)
+        drop.add_effect(ball_at(drop.ball), drop.l_to)
+
+        move = DurativeAction("move", l_from=Location, l_to=Location)
+        move.set_fixed_duration(Int(5))
+        move.add_condition(StartTiming(), robot_at.Equals(move.l_from))
+
+        move.add_effect(EndTiming(), robot_at, move.l_to)
+
+        base_problem.add_actions([pick, drop, move])
+
+        problem = base_problem.clone()
+        problem.add_goal(ball_at(b2).Equals(l2))
+        min_correct_horizon = 4
+        yield problem, min_correct_horizon
+
+        problem = base_problem.clone()
+        problem.add_goal(ball_at(b2).Equals(l2))
+        problem.add_goal(ball_at(b3).Equals(l3))
+        min_correct_horizon = 8
+        yield problem, min_correct_horizon

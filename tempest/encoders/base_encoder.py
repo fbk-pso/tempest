@@ -156,13 +156,11 @@ class BaseEncoder(ABC):
         # The condition is evaluated in the previous state
         smt_c = self.to_smt(e.condition, i - 1, w, scope=action)
 
-        if e.is_assignment():
-            pass
-        elif e.is_increase():
+        if e.is_increase():
             smt_v = self.mgr.Plus(self.to_smt(e.fluent, i - 1, w, scope=action), smt_v)
         elif e.is_decrease():
             smt_v = self.mgr.Minus(self.to_smt(e.fluent, i - 1, w, scope=action), smt_v)
-        else:
+        elif not e.is_assignment():
             raise NotImplementedError
 
         return self.mgr.Implies(smt_c, self.mgr.EqualsOrIff(smt_f, smt_v))

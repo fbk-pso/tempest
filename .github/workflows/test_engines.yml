@@ -4,7 +4,7 @@ on:
   push
 
 env:
-  unified_planning_commit: "c0fb5f688c454889814187757641744dde24e5bc"
+  unified_planning_commit: "5346b6eb6faff64e9196c8958d585e689908b60b"
 
 jobs:
   unit-test:
@@ -60,6 +60,7 @@ jobs:
     with:
       engine-name: "tempest"
       engine-class: TempestEngine
+      unified-planning-commit: ${{env.unified_planning_commit}}
 
   test-tempest-non-incremental:
     needs: [unit-test]
@@ -67,6 +68,7 @@ jobs:
     with:
       engine-name: "tempest-ni"
       engine-class: TempestNonIncremental
+      unified-planning-commit: ${{env.unified_planning_commit}}
 
   test-tempest-optimal:
     needs: [unit-test]
@@ -74,6 +76,7 @@ jobs:
     with:
       engine-name: "tempest-opt"
       engine-class: TempestOptimal
+      unified-planning-commit: ${{env.unified_planning_commit}}
 
   test-tempest-optimal-non-incremental:
     needs: [unit-test]
@@ -81,6 +84,7 @@ jobs:
     with:
       engine-name: "tempest-opt-ni"
       engine-class: TempestOptimalNonIncremental
+      unified-planning-commit: ${{env.unified_planning_commit}}
 
   test-tempest-optimal-lifted-abstract-step:
     needs: [unit-test]
@@ -88,6 +92,7 @@ jobs:
     with:
       engine-name: "tempest-las"
       engine-class: TempestLiftedAbstractStep
+      unified-planning-commit: ${{env.unified_planning_commit}}
 
   test-tempest-optimal-only-omt:
     needs: [unit-test]
@@ -95,6 +100,7 @@ jobs:
     with:
       engine-name: "tempest-oomt"
       engine-class: TempestOnlyOMT
+      unified-planning-commit: ${{env.unified_planning_commit}}
 
   test-tempest-optimal-lifted-abstract-step-only-omt:
     needs: [unit-test]
@@ -102,3 +108,4 @@ jobs:
     with:
       engine-name: "tempest-las-oomt"
       engine-class: TempestLiftedAbstractStepOnlyOMT
+      unified-planning-commit: ${{env.unified_planning_commit}}
