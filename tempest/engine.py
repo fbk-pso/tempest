@@ -1,5 +1,6 @@
 from fractions import Fraction
 from time import time
+from mockup import MockupOMTOptimizer
 import pysmt
 import warnings
 import unified_planning as up
@@ -224,6 +225,9 @@ class TempestOptimal(_BaseEngine):
         start_time = time()
         is_in_timeout: bool = False
         pysmt_env = pysmt.environment.Environment()
+
+        pysmt_env.factory._all_optimizers['MockupOMT'] = MockupOMTOptimizer
+        pysmt_env.factory._all_solvers['MockupOMT'] = MockupOMTOptimizer
 
         epsilon = problem.epsilon
         if epsilon is None:
