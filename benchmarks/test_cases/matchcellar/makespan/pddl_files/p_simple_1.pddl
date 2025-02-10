@@ -1,0 +1,26 @@
+(define (problem p_2_1)
+
+  (:domain match_makespan_v2)
+
+  (:objects
+    f1 f4 - Fuse
+    m1 - Match
+  )
+
+  (:init
+        (= (light_duration m1) 70)
+        (= (mend_duration f1) 1)
+        (= (mend_duration f4) 8)
+        (match_unused m1)
+        (handfree)
+        (dark)
+  )
+
+  (:goal
+        (and
+        (fuse_mended f1)
+        (fuse_mended f4)
+        )
+  )
+  (:metric minimize (total-time))
+)

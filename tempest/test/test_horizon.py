@@ -1,36 +1,34 @@
-# Copyright 2021-2023 AIPlan4EU project
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-
+import importlib
+import os
 from typing import Iterator, Tuple
 from unittest import TestCase
 from unified_planning.shortcuts import *
+from unified_planning.io import PDDLReader
+
+_script_dir = os.path.dirname(__file__)
+_benchmarks_dir = os.path.abspath(os.path.join(_script_dir, "..", "..", "benchmarks"))
+
+sys.path.insert(0, _benchmarks_dir)
 
 class TestHorizon(TestCase):
     def test_horizon(self):
 
         engines_and_params = [
-            ("tempest", {"incremental": True}),
-            ("tempest", {"incremental": False}),
-            ("tempest-opt", {"incremental": True, "sat_before_opt": True, "ground_abstract_step": True}),
-            ("tempest-opt", {"incremental": False, "sat_before_opt": True, "ground_abstract_step": True}),
-            ("tempest-opt", {"incremental": True, "sat_before_opt": False, "ground_abstract_step": True}),
-            ("tempest-opt", {"incremental": False, "sat_before_opt": False, "ground_abstract_step": True}),
-            ("tempest-opt", {"incremental": True, "sat_before_opt": True, "ground_abstract_step": False}),
-            ("tempest-opt", {"incremental": False, "sat_before_opt": True, "ground_abstract_step": False}),
-            ("tempest-opt", {"incremental": True, "sat_before_opt": False, "ground_abstract_step": False}),
-            ("tempest-opt", {"incremental": False, "sat_before_opt": False, "ground_abstract_step": False}),
+            # ("tempest", {"incremental": True, "solver_name": "z3"}),
+            # ("tempest", {"incremental": False, "solver_name": "z3"}),
+            # ("tempest", {"incremental": True, "solver_name": "optimsat"}),
+            # ("tempest", {"incremental": False, "solver_name": "optimsat"}),
+            ("tempest-opt", {"incremental": True, "sat_before_opt": True, "ground_abstract_step": True, "solver_name": "z3"}),
+            # ("tempest-opt", {"incremental": True, "sat_before_opt": True, "ground_abstract_step": True, "solver_name": "optimsat"}),
+            # ("tempest-opt", {"incremental": True, "sat_before_opt": True, "ground_abstract_step": True}),
+            # ("tempest-opt", {"incremental": True, "sat_before_opt": True, "ground_abstract_step": True}),
+            # ("tempest-opt", {"incremental": False, "sat_before_opt": True, "ground_abstract_step": True}),
+            # ("tempest-opt", {"incremental": True, "sat_before_opt": False, "ground_abstract_step": True}),
+            # ("tempest-opt", {"incremental": False, "sat_before_opt": False, "ground_abstract_step": True}),
+            # ("tempest-opt", {"incremental": True, "sat_before_opt": True, "ground_abstract_step": False}),
+            # ("tempest-opt", {"incremental": False, "sat_before_opt": True, "ground_abstract_step": False}),
+            # ("tempest-opt", {"incremental": True, "sat_before_opt": False, "ground_abstract_step": False}),
+            # ("tempest-opt", {"incremental": False, "sat_before_opt": False, "ground_abstract_step": False}),
         ]
 
         for problem, min_correct_horizon in self._get_problems_with_min_horizon():
@@ -45,19 +43,41 @@ class TestHorizon(TestCase):
 
                 params["horizon"] = min_correct_horizon if "opt" not in engine else None
 
-                # Set for tests efficiency
-                if "opt" in engine and min_correct_horizon >= 3:
-                    continue
+                # # Set for tests efficiency TODO
+                # if "opt" in engine and min_correct_horizon >= 3:
+                #     continue
+
+                params["horizon"] = None
 
                 with OneshotPlanner(name=engine, params=params) as planner:
                     result = planner.solve(problem, output_stream = sys.stdout)
                     self.assertIsNotNone(result.plan,  f"{problem.name}, {min_correct_horizon}, {params}")
 
+                print(result.plan)
+                print(params)
+
+        assert False
+
     def _get_problems_with_min_horizon(self) -> Iterator[Tuple[Problem, int]]:
-        for problem, min_correct_horizon in self._basic_counter():
-            yield problem, min_correct_horizon
-        for problem, min_correct_horizon in self._move_ball():
-            yield problem, min_correct_horizon
+        problem_functions = [
+            # self._majsp_1_1_2_1,
+            self._majsp_simplified_1_1_2_1,
+            # self._match_action_costs,
+            # self._match_makespan,
+            # self._optional_goals,
+            # self._painter_2_1,
+            # self._basic_counter,
+            # self._move_ball,
+        ]
+
+        for problem_func in problem_functions:
+
+            for problem, min_correct_horizon in problem_func():
+                yield problem, min_correct_horizon
+        # for problem, min_correct_horizon in self._move_ball():
+        #     yield problem, min_correct_horizon
+        # for problem, min_correct_horizon in self._majsp_1_1_2_1():
+        #     yield problem, min_correct_horizon
 
     def _basic_counter(self) -> Iterator[Tuple[Problem, int]]:
         base_problem = Problem("counter")
@@ -176,3 +196,75 @@ class TestHorizon(TestCase):
         problem.add_goal(ball_at(b3).Equals(l3))
         min_correct_horizon = 8
         yield problem, min_correct_horizon
+
+    def _majsp_1_1_2_1(self):
+        from test_cases.majsp import get_problem
+        problem = get_problem(0)
+        min_correct_horizon = 7
+        yield problem, min_correct_horizon
+
+    def _majsp_simplified_1_1_2_1(self):
+        from test_cases.majsp_simplified import get_problems
+        problem = get_problems(1, 1, 2, 1)
+        min_correct_horizon = 11
+        yield problem, min_correct_horizon
+
+    def _match_action_costs(self):
+        pddl_files_dir = os.path.join(_benchmarks_dir, "test_cases", "matchcellar", "action_costs", "pddl_files")
+        reader = PDDLReader()
+        domain_filename = os.path.join(pddl_files_dir, "domain.pddl")
+        problem_filename = os.path.join(pddl_files_dir, "p_simple_1.pddl")
+        problem = reader.parse_problem(domain_filename, problem_filename)
+        min_correct_horizon = 6
+        yield problem, min_correct_horizon
+
+    def _match_makespan(self):
+        pddl_files_dir = os.path.join(_benchmarks_dir, "test_cases", "matchcellar", "makespan", "pddl_files")
+        reader = PDDLReader()
+        domain_filename = os.path.join(pddl_files_dir, "domain.pddl")
+        problem_filename = os.path.join(pddl_files_dir, "p_simple_1.pddl")
+        problem = reader.parse_problem(domain_filename, problem_filename)
+        min_correct_horizon = 6
+        yield problem, min_correct_horizon
+
+    def _match_makespan(self):
+        pddl_files_dir = os.path.join(_benchmarks_dir, "test_cases", "matchcellar", "makespan", "pddl_files")
+        reader = PDDLReader()
+        domain_filename = os.path.join(pddl_files_dir, "domain.pddl")
+        problem_filename = os.path.join(pddl_files_dir, "p_simple_1.pddl")
+        problem = reader.parse_problem(domain_filename, problem_filename)
+        min_correct_horizon = 6
+        yield problem, min_correct_horizon
+
+    def _optional_goals(self):
+        pddl_files_dir = os.path.join(_benchmarks_dir, "test_cases", "optional_goals", "pddl_files")
+        reader = PDDLReader()
+        domain_filename = os.path.join(pddl_files_dir, "domain.pddl")
+        problem_filename = os.path.join(pddl_files_dir, "p_simple_1.pddl")
+        problem = reader.parse_problem(domain_filename, problem_filename)
+        min_correct_horizon = 3
+        yield problem, min_correct_horizon
+
+    def _painter_2_1(self):
+        from test_cases.painter import get_problems
+        problem = get_problems(3, 1)
+        min_correct_horizon = 7
+        yield problem, min_correct_horizon
+
+
+
+
+
+
+
+
+
+
+
+
+
+        # with OneshotPlanner(name="tempest") as planner:
+        #     result = planner.solve(problem, output_stream = sys.stdout)
+        #     print(result.plan)
+
+        # assert False
