@@ -154,8 +154,8 @@ class TempestEngine(_BaseEngine):
                         return res
                 else:
                     elapsed_time = time() - start_time
-                    if output_stream is not None:
-                        output_stream.write(f"No solution with bound {h}. Elapsed_time: {elapsed_time:.3f} seconds\n")
+                    # if output_stream is not None:
+                    #     output_stream.write(f"No solution with bound {h}. Elapsed_time: {elapsed_time:.3f} seconds\n")
                     h += 1
                     if timeout is not None and elapsed_time > timeout:
                         is_in_timeout = True
@@ -257,13 +257,13 @@ class TempestOptimal(_BaseEngine):
                     if smt.solve(assumptions):
                         first_sat_step = h
                         elapsed_time = time() - start_time
-                        if output_stream is not None:
-                            output_stream.write(f"SAT solution with bound {modify_horizon(h)}. Elapsed_time: {elapsed_time:.3f} seconds\n")
+                        # if output_stream is not None:
+                        #     output_stream.write(f"SAT solution with bound {modify_horizon(h)}. Elapsed_time: {elapsed_time:.3f} seconds\n")
                     else:
                         h += 1
                         elapsed_time = time() - start_time
-                        if output_stream is not None:
-                            output_stream.write(f"No SAT solution with bound {modify_horizon(h)}. Elapsed_time: {elapsed_time:.3f} seconds\n")
+                        # if output_stream is not None:
+                        #     output_stream.write(f"No SAT solution with bound {modify_horizon(h)}. Elapsed_time: {elapsed_time:.3f} seconds\n")
                     if timeout is not None and elapsed_time > timeout:
                         is_in_timeout = True
                     if first_sat_step > 0 or is_in_timeout:
@@ -289,6 +289,7 @@ class TempestOptimal(_BaseEngine):
 
         h = 2
         with pysmt_env.factory.Optimizer(name=self.solver_name, logic="QF_LRA") as omt:
+            omt.output = output_stream
             step_zero = encoder.encode_step_zero()
             if step_zero is not None:
                 omt.add_assertion(step_zero)
@@ -326,8 +327,8 @@ class TempestOptimal(_BaseEngine):
                         uses_abstract_step = model.get_value(encoder.uses_abstact_step(h-1, h)).is_true()
                     if uses_abstract_step:
                         elapsed_time = time() - start_time
-                        if output_stream is not None:
-                            output_stream.write(f"Makespan with bound {modify_horizon(h)}: {makespan}. Elapsed_time: {elapsed_time:.3f} seconds\n")
+                        # if output_stream is not None:
+                        #     output_stream.write(f"Makespan with bound {modify_horizon(h)}: {makespan}. Elapsed_time: {elapsed_time:.3f} seconds\n")
                         h += 1
                         if timeout is not None and elapsed_time > timeout:
                             is_in_timeout = True
