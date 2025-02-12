@@ -50,11 +50,15 @@ class MockupOMTOptimizer(Optimizer, SmtLibSolver):
 
         #self.parser = SmtLibParser(interactive=True)
 
-        # Initialize solver
-        self.options(self)
-        self.set_logic(logic)
+        self.initialized = False
+        self.logic_str = logic
 
     def _send_command(self, cmd):
+        if not self.initialized:
+            self.initialized = True
+            # Initialize solver
+            self.options(self)
+            self.set_logic(self.logic_str)
         cmd.serialize(self.output, daggify=True)
         self.output.write("\n")
         self.output.flush()
@@ -75,7 +79,7 @@ class MockupOMTOptimizer(Optimizer, SmtLibSolver):
     def optimize(self, goal, **kwargs):
         if isinstance(goal, MaxSMTGoal):
             for f,w in goal.soft:
-                self._send_command(cmd=SmtLibCommand(smtcmd.ASSERT_SOFT, [f,w]))
+                self._send_command(cmd=SmtLibCommand(smtcmd.ASSERT_SOFT, [f,[(":weight", self.environment.formula_manager.Real(w))]]))
         elif isinstance(goal, MinMaxGoal):
             self._send_command(cmd=SmtLibCommand(smtcmd.MINMAX, goal.terms))
         return self.get_model(), 100
