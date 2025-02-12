@@ -827,6 +827,10 @@ class BaseEncoder(ABC):
         metric = self.problem.quality_metrics[0] if self.problem.quality_metrics else None
         if metric is None or metric.is_minimize_makespan():
             terms = [self.t(i)]
+            for act in self.problem.actions:
+                if isinstance(act, DurativeAction):
+                    for j in range(1, i+1):
+                        terms.append(self.mgr.Plus(self.t(j), self.dur(act, j)))
             timed_goals_timings = chain(*map(lambda x: (x.lower, x.upper), self.problem.timed_goals.keys()))
             problem_timings = chain(timed_goals_timings, self.problem.timed_effects.keys())
             for timing in filter(lambda x: x.is_from_start(), problem_timings):
