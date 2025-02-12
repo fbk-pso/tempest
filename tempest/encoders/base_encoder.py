@@ -643,7 +643,7 @@ class BaseEncoder(ABC):
                 goal_not_satisfied = self.mgr.Not(self.to_smt(goal, h-1))
                 res.append(self.mgr.Implies(
                     self.mgr.And(goal_not_satisfied, interval_in_abstract_step, interval_not_empty),
-                    self._phi_sched_parametrized_formula(goal, timing, None, None, h)
+                    self._phi_sched_parametrized_formula(goal, timing, interval.is_left_open(), None, None, h)
                 ))
 
         # Handles Durative Actions that started in a concrete step but still have to end
@@ -662,7 +662,7 @@ class BaseEncoder(ABC):
                         cond_not_satisfied = self.mgr.Not(self.to_smt(cond, h-1, s, scope=a))
                         sub_res.append(self.mgr.Implies(
                             self.mgr.And(cond_not_satisfied, interval_in_abstract_step, interval_not_empty),
-                            self._phi_sched_parametrized_formula(cond, timing, a, s, h)
+                            self._phi_sched_parametrized_formula(cond, timing, interval.is_left_open(), a, s, h)
                         ))
                 res.append(self.mgr.Implies(self.a(a, s), self.mgr.And(sub_res)))
 
@@ -676,7 +676,7 @@ class BaseEncoder(ABC):
                     cond_not_satisfied = self.mgr.Not(self.to_smt(cond, h-1, h, a))
                     sub_res.append(self.mgr.Implies(
                         cond_not_satisfied,
-                        self._phi_sched_parametrized_formula(cond, None, a, h, h)
+                        self._phi_sched_parametrized_formula(cond, None, False, a, h, h)
                     ))
             else:
                 assert isinstance(a, DurativeAction)
@@ -690,7 +690,7 @@ class BaseEncoder(ABC):
                         cond_not_satisfied = self.mgr.Not(self.to_smt(cond, h-1, h, a))
                         sub_res.append(self.mgr.Implies(
                             self.mgr.And(cond_not_satisfied, interval_not_empty),
-                            self._phi_sched_parametrized_formula(cond, timing, a, h, h)
+                            self._phi_sched_parametrized_formula(cond, timing, interval.is_left_open(), a, h, h)
                         ))
             res.append(self.mgr.Implies(self.a(a, h), self.mgr.And(sub_res)))
 
@@ -737,7 +737,7 @@ class BaseEncoder(ABC):
 
         return self.mgr.Not(self.mgr.And(res))
 
-    def _phi_sched_parametrized_formula(self, phi: FNode, t: Optional[Timing], a: Optional[Action], w: Optional[int], h: int):
+    def _phi_sched_parametrized_formula(self, phi: FNode, t: Optional[Timing], left_open: bool, a: Optional[Action], w: Optional[int], h: int):
         res = []
         if a is None:
             assert w is None
@@ -752,7 +752,7 @@ class BaseEncoder(ABC):
         for fluent_exp in self._get_sorted_free_vars(phi):
             fluent_params = self._get_sorted_parameters(fluent_exp, a)
             if not fluent_params or not self.ground_abstract_step:
-                res.append(self.mgr.And(self.fluent_mod(fluent_exp, a, w), self._phi_sched_formula(phi_time, fluent_exp, h)))
+                res.append(self.mgr.And(self.fluent_mod(fluent_exp, a, w), self._phi_sched_formula(phi_time, fluent_exp, left_open, h)))
             else:
                 assert w < h, "parameters should come only from actions started in concrete steps"
                 for parameter_assignment in self._get_possible_parameters_assignments(fluent_params):
@@ -762,11 +762,11 @@ class BaseEncoder(ABC):
                         p_eq.append(self.mgr.EqualsOrIff(self.to_smt(param_exp, w, w, scope=a), self.to_smt(obj_exp, w)))
                     parameters_equality = self.mgr.And(p_eq)
                     ground_fluent_exp = fluent_exp.substitute(assignments)
-                    res.append(self.mgr.And(parameters_equality, self.fluent_mod(ground_fluent_exp, a, w), self._phi_sched_formula(phi_time, ground_fluent_exp, h)))
+                    res.append(self.mgr.And(parameters_equality, self.fluent_mod(ground_fluent_exp, a, w), self._phi_sched_formula(phi_time, ground_fluent_exp, left_open, h)))
 
         return self.mgr.Or(res)
 
-    def _phi_sched_formula(self, phi_time, fluent_exp: FNode, h: int):
+    def _phi_sched_formula(self, phi_time, fluent_exp: FNode, left_open: bool, h: int):
         res = []
         last_t = self.t(h-1)
         if self.ground_abstract_step:
@@ -795,7 +795,10 @@ class BaseEncoder(ABC):
                         b_k_formula.append(self.mgr.And(parameters_equality))
                     e_k_time = self.encode_tp(b, t, k, h)
                     b_k_formula.append(self.mgr.LE(self.mgr.Plus(last_t, self.mgr.Real(self.epsilon)), e_k_time))
-                    b_k_formula.append(self.mgr.LE(e_k_time, phi_time))
+                    if left_open:
+                        b_k_formula.append(self.mgr.LE(e_k_time, phi_time))
+                    else:
+                        b_k_formula.append(self.mgr.LE(self.mgr.Plus(e_k_time, self.mgr.Real(self.epsilon)), phi_time))
                     res.append(self.mgr.And(b_k_formula))
 
             h_step_formula = []
@@ -805,7 +808,10 @@ class BaseEncoder(ABC):
             else: # timed effect
                 e_h_time = self.encode_problem_tp(t, h)
             h_step_formula.append(self.mgr.LE(self.mgr.Plus(last_t, self.mgr.Real(self.epsilon)), e_h_time))
-            h_step_formula.append(self.mgr.LE(e_h_time, phi_time))
+            if left_open:
+                h_step_formula.append(self.mgr.LE(e_h_time, phi_time))
+            else:
+                h_step_formula.append(self.mgr.LE(self.mgr.Plus(e_h_time, self.mgr.Real(self.epsilon)), phi_time))
             res.append(self.mgr.And(h_step_formula))
         return self.mgr.Or(res)
 
