@@ -653,7 +653,10 @@ class BaseEncoder(ABC):
                 sub_res = []
                 for interval, cl in a.conditions.items():
                     timing = interval.lower
-                    interval_in_abstract_step = self.mgr.GT(self.encode_tp(a, timing, s, h), self.t(h-1))
+                    if interval.is_left_open():
+                        interval_in_abstract_step = self.mgr.GE(self.encode_tp(a, timing, s, h), self.t(h-1))
+                    else:
+                        interval_in_abstract_step = self.mgr.GT(self.encode_tp(a, timing, s, h), self.t(h-1))
                     empty_interval_operand = self.mgr.LE
                     if interval.is_left_open() or interval.is_right_open():
                         empty_interval_operand = self.mgr.LT
@@ -787,13 +790,13 @@ class BaseEncoder(ABC):
                     lifted_a, params_a = lifted_ai.action, lifted_ai.actual_parameters
                     parameters_assignment = dict(zip(map(self.em.ParameterExp, lifted_a.parameters), params_a))
                 for k in range(1, h):
-                    b_k_formula = [self.a(b, k)]
+                    b_k_formula = [self.a(lifted_a, k)]
                     if self.ground_abstract_step:
                         parameters_equality = []
                         for param_exp, obj_exp in parameters_assignment.items():
                             parameters_equality.append(self.mgr.EqualsOrIff(self.to_smt(param_exp, k, k, scope=lifted_a), self.to_smt(obj_exp, k)))
                         b_k_formula.append(self.mgr.And(parameters_equality))
-                    e_k_time = self.encode_tp(b, t, k, h)
+                    e_k_time = self.encode_tp(lifted_a, t, k, h)
                     b_k_formula.append(self.mgr.LE(self.mgr.Plus(last_t, self.mgr.Real(self.epsilon)), e_k_time))
                     if left_open:
                         b_k_formula.append(self.mgr.LE(e_k_time, phi_time))

@@ -35,12 +35,16 @@ class IncrementalEncoder(BaseEncoder):
             for w in range(1, i + 1):
                 if self.optimal:
                     smt_tp_1 = self.encode_tp(action, it.lower, w, None)
+                    if it.is_left_open():
+                        start_condition_after_last_concrete_step = self.mgr.LE(self.t_last(), smt_tp_1)
+                    else:
+                        start_condition_after_last_concrete_step = self.mgr.LT(self.t_last(), smt_tp_1)
                     condition_last_concrete_step = self.to_smt(c, i, w, action)
                     condition_abstract_step = self.mgr.Or((self.fluent_mod(exp, action, w) for exp in self._get_sorted_free_vars(c)))
                     temp_l.append(
                         self.mgr.Implies(
                             self.chain_var(action, ev, i + 1, w),
-                            self.mgr.Implies(self.mgr.GT(smt_tp_1, self.t_last()), self.mgr.Or(condition_last_concrete_step, condition_abstract_step))
+                            self.mgr.Implies(start_condition_after_last_concrete_step, self.mgr.Or(condition_last_concrete_step, condition_abstract_step))
                         )
                     )
                 else:
@@ -157,11 +161,11 @@ class IncrementalEncoder(BaseEncoder):
                 if self.ground_abstract_step:
                     concrete_ai = self.map_back_action_instance(action())
                     concrete_action = concrete_ai.action
-                    parameters_assignment = dict(zip(action.parameters, concrete_ai.actual_parameters))
+                    parameters_assignment = dict(zip(concrete_action.parameters, concrete_ai.actual_parameters))
                 a_i = self.a(concrete_action, i)
                 parameters_equality = []
                 for param_exp, obj_exp in parameters_assignment.items():
-                    parameters_equality.append(self.mgr.EqualsOrIff(self.to_smt(param_exp, i, i, scope=concrete_action), self.to_smt(obj_exp, i)))
+                    parameters_equality.append(self.mgr.EqualsOrIff(self.to_smt(self.em.ParameterExp(param_exp), i, i, scope=concrete_action), self.to_smt(obj_exp, i)))
                 p_eq = self.mgr.And(parameters_equality)
                 effect_time = self.encode_tp(concrete_action, timing, i, None)
                 effect_in_abstract_step = self.mgr.GT(effect_time, self.t_last())
@@ -287,8 +291,10 @@ class IncrementalEncoder(BaseEncoder):
 
         # Goals
         if self.optimal:
-            g = self.em.And(self.problem.goals)
-            temp_res.append(self.mgr.Or([self.fluent_mod(exp, None, None) for exp in self._get_sorted_free_vars(g)] + [self.to_smt(g, i, 0)]))
+            for goal in self.problem.goals:
+                goals = goal.args if goal.is_and() else [goal]
+                for g in goals:
+                    temp_res.append(self.mgr.Or([self.fluent_mod(exp, None, None) for exp in self._get_sorted_free_vars(g)] + [self.to_smt(g, i, 0)]))
         else:
             temp_res.append(
                 self.to_smt(self.em.And(self.problem.goals), i, 0, scope=None)
