@@ -30,14 +30,14 @@ make_treatment.add_condition(EndTiming(), started(make_treatment.i, make_treatme
 
 
 def get_problems(n_t, n_i):
-    p = Problem('problem')
+    p = Problem(f'painter_{n_t}_{n_i}')
 
     for f in [busy, treated, started, ready, consecutive]:
         p.add_fluent(f, default_initial_value=False)
     for f in [counter, item_id]:
         p.add_fluent(f, default_initial_value=0)
 
-    p.add_objects([Object(f't{i}', Treatment) for i in range(n_t)])
+    p.add_objects([Object(f't{i}', Treatment) for i in range(n_t+1)])
     p.add_objects([Object(f'i{i}', Item) for i in range(n_i)])
 
     p.add_action(make_treatment)
@@ -45,15 +45,15 @@ def get_problems(n_t, n_i):
     for i in range(n_i):
         p.set_initial_value(item_id(p.object(f"i{i}")), i)
 
-    for t in range(n_t-1):
+    for t in range(n_t):
         p.set_initial_value(consecutive(p.object(f"t{t}"), p.object(f"t{t+1}")), True)
 
     for i in range(n_i):
-        p.set_initial_value(started(p.object(f"i{i}"), p.object(f"t{n_t-1}")), True)
+        p.set_initial_value(started(p.object(f"i{i}"), p.object(f"t{n_t}")), True)
         p.set_initial_value(ready(p.object(f"i{i}"), p.object("t0")), True)
 
     for i in range(n_i):
-        for t in range(n_t-1):
+        for t in range(n_t):
             p.add_goal(treated(p.object(f"i{i}"), p.object(f"t{t}")))
 
     p.add_quality_metric(MinimizeMakespan())
@@ -62,5 +62,11 @@ def get_problems(n_t, n_i):
 
 
 def get_test_cases():
-    problems = {f"painter_{i}": TestCase(get_problems(i, i), True, optimum = 1) for i in range(1, 2)}
-    return problems
+    parameters_optimum = [
+        ([2, 1], Fraction(2501, 100)),
+    ]
+    test_cases = {}
+    for params, optimum in parameters_optimum:
+        problem = get_problems(*params)
+        test_cases[problem.name] = TestCase(problem, True, optimum)
+    return test_cases

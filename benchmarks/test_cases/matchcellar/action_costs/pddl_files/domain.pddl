@@ -1,63 +1,37 @@
-(define (domain match_action_cost)
-    (:requirements :fluents :equality :typing :durative-actions :negative-preconditions)
+(define (domain matchcellar)
+     (:requirements :typing :durative-actions) 
+     (:types match fuse) 
+     (:predicates  
+          (handfree) 
+          (unused ?match - match) 
+          (mended ?fuse - fuse)
+	  (light ?match - match))
+     (:functions
+          (total-cost)
+     )
 
-    (:types Match Fuse)
+     (:durative-action LIGHT_MATCH
+          :parameters (?match - match)
+          :duration (= ?duration 5)
+          :condition (and
+	       (at start (unused ?match)))
+          :effect (and 
+		(at start (not (unused ?match)))
+		(at start (light ?match))
+		(at end (not (light ?match)))
+          (at end (increase (total-cost) 5))))
 
-    (:predicates
-        (handfree)
-        (match_unused ?m - Match)
-        (fuse_mended ?f - Fuse)
-        (dark)
-        (light)
-    )
 
-    (:functions
-        (total-cost)
-        (match_cost ?m - Match)
-        (light_duration ?m - Match)
-        (mend_duration ?f - Fuse)
-    )
-
-    (:durative-action light_match
-        :parameters (?m - Match)
-        :duration (= ?duration (light_duration ?m))
-        :condition
-            (and
-                (at start (and
-                              (match_unused ?m)
-                              (dark)))
-            )
-        :effect
-            (and
-                (at start (and
-                              (not (match_unused ?m))
-                              (not (dark))
-                              (light)))
-                (at end (and
-                            (dark)
-                            (not (light))
-                            (increase (total-cost) (match_cost ?m))))
-            )
-    )
-
-    (:durative-action mend_fuse
-        :parameters (?f - Fuse)
-        :duration (= ?duration (mend_duration ?f))
-        :condition
-            (and
-                (at start (and
-                              (handfree)
-                              (light)))
-                (over all (light))
-            )
-        :effect
-            (and
-                (at start (and
-                              (not (handfree))))
-                (at end (and
-                            (fuse_mended ?f)
-                            (handfree)
-                            (increase (total-cost) 1)))
-            )
-    )
+     (:durative-action MEND_FUSE 
+          :parameters (?fuse - fuse ?match - match) 
+          :duration (= ?duration 2) 
+          :condition (and  
+               (at start (handfree))
+	       (over all (light ?match)))
+          :effect (and
+               (at start (not (handfree)))
+               (at end (mended ?fuse))
+               (at end (handfree))
+               (at end (increase (total-cost) 2))))
 )
+

@@ -73,10 +73,9 @@ load.add_effect(robot_has(load.r, load.pallet), True)
 load.add_effect(treated(load.pallet, load.t), True)
 load.add_effect(position_free(load.pos), True)
 
-def get_problems(nRob, nPos, nPall, nTreatment):
+def get_problems(nRob, nPall, nPos, nTreatment):
 
-    name_suffix = "_".join(map(str, [nRob, nPos, nPall, nTreatment]))
-    p = Problem(f'majsp_simplified_{name_suffix}')
+    p = Problem('problem')
     for f in [robot_at, robot_free, robot_has, ready,
               position_free, treated, pallet_at, can_do, is_depot]:
         p.add_fluent(f, default_initial_value=False)
@@ -94,12 +93,13 @@ def get_problems(nRob, nPos, nPall, nTreatment):
     p.add_action(unload_at_depot)
     p.add_action(make_treat)
 
+    last_position = p.object(f'p{nPos-1}')
     #All robots stay at the same position, and so do the pallets
     for i in range(nRob):
-        p.set_initial_value(robot_at(p.object(f'r{i}'),p.object('p0')),True)
+        p.set_initial_value(robot_at(p.object(f'r{i}'), last_position), True)
         p.set_initial_value(robot_free(p.object(f'r{i}')),True)
     for i in range(nPall):
-        p.set_initial_value(pallet_at(p.object(f'plt{i}'),p.object('p0')),True)
+        p.set_initial_value(pallet_at(p.object(f'plt{i}'), last_position), True)
 
 
     for i in range(nRob):
@@ -109,19 +109,17 @@ def get_problems(nRob, nPos, nPall, nTreatment):
         p.set_initial_value(distance(p.object(f'p{i}'), p.object(f'p{i}')), 0)
         for j in range(i+1, nPos):
             p.set_initial_value(distance(p.object(f'p{i}'), p.object(f'p{j}')), j-i)
+            p.set_initial_value(distance(p.object(f'p{j}'), p.object(f'p{i}')), j-i)
 
-    #Position p0 is the depot
-    p.set_initial_value(is_depot(p.object('p0')),True)
+    # last_position is the depot
+    p.set_initial_value(is_depot(last_position),True)
     for i in range(nPos):
         p.set_initial_value(position_free(p.object(f'p{i}')),True)
 
     #Treatments are done over the various positions
     for i in range(0,nTreatment):
-        if i == 0:
-            j = (i+1) % nPos #this is to avoid the the treatment is done at the depot
-        else:
-            j = i % nPos
-        p.set_initial_value(can_do(p.object(f'p{j}'),p.object(f't{i}')),True)
+        treatment_position = i % (nPos-1)
+        p.set_initial_value(can_do(p.object(f'p{treatment_position}'),p.object(f't{i}')),True)
         for k in range(nPall):
             p.add_goal(treated(p.object(f'plt{k}'),p.object(f't{i}')))
 
@@ -131,5 +129,11 @@ def get_problems(nRob, nPos, nPall, nTreatment):
 
 
 def get_test_cases():
-    problems = {f"majsp_simplified_{i}": TestCase(get_problems(i, i, i, i), True, optimum = 1) for i in range(1, 2)}
-    return problems
+    parameters_optimum = [
+        ([1, 1, 2, 1], Fraction(2002, 100)),
+    ]
+    test_cases = {}
+    for params, optimum in parameters_optimum:
+        problem = get_problems(*params)
+        test_cases[problem.name] = TestCase(problem, True, optimum)
+    return test_cases

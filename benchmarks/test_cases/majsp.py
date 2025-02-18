@@ -1,118 +1,94 @@
-from itertools import product
-
 from unified_planning.shortcuts import *
 from unified_planning.test import TestCase
 
 #Setting up Types
-Robot = UserType("Robot")
-Pallet = UserType("Pallet")
-Position = UserType("Position")
-Treatment = UserType("Treatment")
+Robot = UserType('Robot')
+Pallet = UserType('Pallet')
+Position = UserType('Position')
+Treatment = UserType('Treatment')
 
 #Setting up Fluents
-robot_at = Fluent("robot_at", BoolType(), r=Robot, p=Position)
-robot_has = Fluent("robot_has",BoolType(),r=Robot, p=Pallet)
-pallet_at = Fluent("pallet_at", BoolType(), p=Pallet, pos=Position)
-robot_free = Fluent("robot_free",BoolType(), r=Robot)
-position_free = Fluent("position_free",BoolType(),p=Position)
-can_do = Fluent("can_do",BoolType(),p=Position, t=Treatment)
-treated = Fluent("treated",BoolType(),p=Pallet,t=Treatment)
-ready = Fluent("ready",BoolType(),p=Pallet,pos=Position,t=Treatment)
-is_depot = Fluent("is_depot",BoolType(),p=Position)
+robot_at = Fluent('robot_at', BoolType(), r=Robot, p=Position)
+robot_has = Fluent('robot_has',BoolType(),r=Robot, p=Pallet)
+pallet_at = Fluent('pallet_at', BoolType(), p=Pallet, pos=Position)
+robot_free = Fluent('robot_free',BoolType(), r=Robot)
+position_free = Fluent('position_free',BoolType(),p=Position)
+can_do = Fluent('can_do',BoolType(),p=Position, t=Treatment)
+treated = Fluent('treated',BoolType(),p=Pallet,t=Treatment)
+ready = Fluent('ready',BoolType(),p=Pallet,pos=Position,t=Treatment)
+is_depot = Fluent('is_depot',BoolType(),p=Position)
+battery_level = Fluent('battery_level', IntType(0, 100), r=Robot)
+distance = Fluent('distance', IntType(), pfrom=Position, pto=Position)
 
 #Setting up Actions:
-move = DurativeAction("move", r=Robot,frompos=Position,topos=Position)
-r = move.parameter("r")
-frompos =move.parameter("frompos")
-topos =move.parameter("topos")
-move.set_fixed_duration(1)
-move.add_condition(StartTiming(),Not(Equals(frompos,topos)))
-move.add_condition(StartTiming(),robot_at(r,frompos))
-move.add_effect(StartTiming(),robot_at(r,topos),True)
-move.add_effect(StartTiming(),robot_at(r,frompos),False)
+move = InstantaneousAction('move', r=Robot, frompos=Position, topos=Position)
+move.add_precondition(Not(Equals(move.frompos, move.topos)))
+move.add_precondition(robot_at(move.r, move.frompos))
+move.add_precondition(GE(battery_level(move.r), distance(move.frompos, move.topos)))
+move.add_effect(robot_at(move.r, move.topos), True)
+move.add_effect(robot_at(move.r, move.frompos), False)
+move.add_decrease_effect(battery_level(move.r), distance(move.frompos, move.topos))
 
-unload_at_depot = DurativeAction("unload_at_depot", r=Robot,pallet=Pallet,pos=Position)
-r = unload_at_depot.parameter("r")
-pallet =unload_at_depot.parameter("pallet")
-pos =unload_at_depot.parameter("pos")
-unload_at_depot.set_fixed_duration(1)
-unload_at_depot.add_condition(StartTiming(),is_depot(pos))
-unload_at_depot.add_condition(StartTiming(),robot_at(r,pos))
-unload_at_depot.add_condition(StartTiming(),robot_has(r,pallet))
-unload_at_depot.add_effect(StartTiming(),pallet_at(pallet,pos),True)
-unload_at_depot.add_effect(StartTiming(),robot_free(r),True)
-unload_at_depot.add_effect(StartTiming(),robot_has(r,pallet),False)
+unload_at_depot = InstantaneousAction('unload_at_depot', r=Robot, pallet=Pallet, pos=Position)
+unload_at_depot.add_precondition(is_depot(unload_at_depot.pos))
+unload_at_depot.add_precondition(robot_at(unload_at_depot.r, unload_at_depot.pos))
+unload_at_depot.add_precondition(robot_has(unload_at_depot.r, unload_at_depot.pallet))
+unload_at_depot.add_effect(pallet_at(unload_at_depot.pallet, unload_at_depot.pos),True)
+unload_at_depot.add_effect(robot_free(unload_at_depot.r),True)
+unload_at_depot.add_effect(robot_has(unload_at_depot.r, unload_at_depot.pallet),False)
 
-load_at_depot = DurativeAction("load_at_depot", r=Robot,pallet=Pallet,pos=Position)
-r = load_at_depot.parameter("r")
-pallet =load_at_depot.parameter("pallet")
-pos =load_at_depot.parameter("pos")
-load_at_depot.set_fixed_duration(1)
-load_at_depot.add_condition(StartTiming(),is_depot(pos))
-load_at_depot.add_condition(StartTiming(),robot_at(r,pos))
-load_at_depot.add_condition(StartTiming(),robot_free(r))
-load_at_depot.add_condition(StartTiming(),pallet_at(pallet,pos))
-load_at_depot.add_effect(StartTiming(),robot_free(r),False)
-load_at_depot.add_effect(StartTiming(),robot_has(r,pallet),True)
-load_at_depot.add_effect(StartTiming(),pallet_at(pallet,pos),False)
+load_at_depot = InstantaneousAction('load_at_depot', r=Robot, pallet=Pallet, pos=Position)
+load_at_depot.add_precondition(is_depot(load_at_depot.pos))
+load_at_depot.add_precondition(robot_at(load_at_depot.r, load_at_depot.pos))
+load_at_depot.add_precondition(robot_free(load_at_depot.r))
+load_at_depot.add_precondition(pallet_at(load_at_depot.pallet, load_at_depot.pos))
+load_at_depot.add_effect(robot_free(load_at_depot.r), False)
+load_at_depot.add_effect(robot_has(load_at_depot.r, load_at_depot.pallet), True)
+load_at_depot.add_effect(pallet_at(load_at_depot.pallet, load_at_depot.pos), False)
 
-make_treat = DurativeAction("make_treat", r=Robot,pallet=Pallet,pos=Position,t =Treatment)
-r = make_treat.parameter("r")
-pallet =make_treat.parameter("pallet")
-pos =make_treat.parameter("pos")
-t = make_treat.parameter("t")
+make_treat = DurativeAction('make_treatment', r=Robot, pallet=Pallet, pos=Position, t=Treatment)
 make_treat.set_fixed_duration(20)
-make_treat.add_condition(StartTiming(),can_do(pos,t))
-make_treat.add_condition(StartTiming(),position_free(pos))
-make_treat.add_condition(StartTiming(),robot_at(r,pos))
-make_treat.add_condition(StartTiming(),robot_has(r,pallet))
-make_treat.add_condition(StartTiming(),Not(treated(pallet,t)))
-make_treat.add_condition(EndTiming(),treated(pallet,t))
-make_treat.add_condition(EndTiming(),position_free(pos))
-make_treat.add_effect(StartTiming(),position_free(pos),False)
-make_treat.add_effect(StartTiming(),robot_has(r,pallet),False)
-make_treat.add_effect(StartTiming(),pallet_at(pallet,pos),True)
-make_treat.add_effect(StartTiming(),robot_free(r),True)
-make_treat.add_effect(StartTiming(10),ready(pallet,pos,t),True)
+make_treat.add_condition(StartTiming(), can_do(make_treat.pos, make_treat.t))
+make_treat.add_condition(StartTiming(), position_free(make_treat.pos))
+make_treat.add_condition(StartTiming(), robot_at(make_treat.r, make_treat.pos))
+make_treat.add_condition(StartTiming(), robot_has(make_treat.r, make_treat.pallet))
+make_treat.add_condition(StartTiming(), Not(treated(make_treat.pallet, make_treat.t)))
+make_treat.add_condition(EndTiming(), treated(make_treat.pallet, make_treat.t))
+make_treat.add_condition(EndTiming(), position_free(make_treat.pos))
+make_treat.add_effect(StartTiming(), position_free(make_treat.pos), False)
+make_treat.add_effect(StartTiming(), robot_has(make_treat.r, make_treat.pallet), False)
+make_treat.add_effect(StartTiming(), pallet_at(make_treat.pallet, make_treat.pos), True)
+make_treat.add_effect(StartTiming(), robot_free(make_treat.r), True)
+make_treat.add_effect(StartTiming(10), ready(make_treat.pallet, make_treat.pos, make_treat.t), True)
 
-load = DurativeAction("load", r=Robot, pallet = Pallet, pos = Position,t = Treatment)
-r = load.parameter("r")
-pallet = load.parameter("pallet")
-pos = load.parameter("pos")
-t = load.parameter("t")
-load.set_fixed_duration(1)
-load.add_condition(StartTiming(),ready(pallet,pos,t))
-load.add_condition(StartTiming(),robot_at(r,pos))
-load.add_condition(StartTiming(),robot_free(r))
-load.add_condition(StartTiming(),pallet_at(pallet,pos))
-load.add_effect(StartTiming(),robot_free(r),False)
-load.add_effect(StartTiming(),ready(pallet,pos,t),False)
-load.add_effect(StartTiming(),pallet_at(pallet,pos),False)
-load.add_effect(StartTiming(),robot_has(r,pallet),True)
-load.add_effect(StartTiming(),treated(pallet,t),True)
-load.add_effect(StartTiming(),position_free(pos),True)
+load = InstantaneousAction('load', r=Robot, pallet=Pallet, pos=Position, t=Treatment)
+load.add_precondition(ready(load.pallet, load.pos, load.t))
+load.add_precondition(robot_at(load.r, load.pos))
+load.add_precondition(robot_free(load.r))
+load.add_precondition(pallet_at(load.pallet, load.pos))
+load.add_effect(robot_free(load.r), False)
+load.add_effect(ready(load.pallet, load.pos, load.t), False)
+load.add_effect(pallet_at(load.pallet, load.pos), False)
+load.add_effect(robot_has(load.r, load.pallet), True)
+load.add_effect(treated(load.pallet, load.t), True)
+load.add_effect(position_free(load.pos), True)
 
-#Setting up the number of robots, positions, pallets and treatments
-# nRob = 1 # to 3
-# nPos = 2 # to 6
-# nPall = 1 # to 4
-# nTreatment = 1 # to 4
 
-ALL_PARAMS = list(product(range(1,4), range(2,7), range(1,5), range(1,5)))
+def get_problems(nRob, nPall, nPos, nTreatment):
 
-def get_problem(problem_id):
+    name_suffix = '_'.join(map(str, [nRob, nPall, nPos, nTreatment]))
+    p = Problem(f'majsp_{name_suffix}')
 
-    nRob, nPos, nPall, nTreatment = ALL_PARAMS[problem_id]
-
-    p = Problem("problem")
     for f in [robot_at, robot_free, robot_has, ready,
               position_free, treated, pallet_at, can_do, is_depot]:
         p.add_fluent(f, default_initial_value=False)
+    p.add_fluent(battery_level, default_initial_value=0)
+    p.add_fluent(distance, default_initial_value=0)
 
-    p.add_objects([Object(f"r{i}",Robot) for i in range(nRob)])
-    p.add_objects([Object(f"p{i}",Position) for i in range(nPos)])
-    p.add_objects([Object(f"plt{i}",Pallet) for i in range(nPall)])
-    p.add_objects([Object(f"t{i}",Treatment) for i in range(nTreatment)])
+    p.add_objects([Object(f'r{i}',Robot) for i in range(nRob)])
+    p.add_objects([Object(f'p{i}',Position) for i in range(nPos)])
+    p.add_objects([Object(f'plt{i}',Pallet) for i in range(nPall)])
+    p.add_objects([Object(f't{i}',Treatment) for i in range(nTreatment)])
 
     p.add_action(move)
     p.add_action(load)
@@ -120,30 +96,47 @@ def get_problem(problem_id):
     p.add_action(unload_at_depot)
     p.add_action(make_treat)
 
+    last_position = p.object(f'p{nPos-1}')
     #All robots stay at the same position, and so do the pallets
     for i in range(nRob):
-        p.set_initial_value(robot_at(p.object(f"r{i}"),p.object("p0")),True)
-        p.set_initial_value(robot_free(p.object(f"r{i}")),True)
+        p.set_initial_value(robot_at(p.object(f'r{i}'), last_position),True)
+        p.set_initial_value(robot_free(p.object(f'r{i}')),True)
     for i in range(nPall):
-        p.set_initial_value(pallet_at(p.object(f"plt{i}"),p.object("p0")),True)
+        p.set_initial_value(pallet_at(p.object(f'plt{i}'), last_position),True)
 
-    #Position p0 is the depot
-    p.set_initial_value(is_depot(p.object("p0")),True)
+
+    for i in range(nRob):
+        p.set_initial_value(battery_level(p.object(f'r{i}')), nPos*nPall*2)
+
     for i in range(nPos):
-        p.set_initial_value(position_free(p.object(f"p{i}")),True)
+        p.set_initial_value(distance(p.object(f'p{i}'), p.object(f'p{i}')), 0)
+        for j in range(i+1, nPos):
+            p.set_initial_value(distance(p.object(f'p{i}'), p.object(f'p{j}')), j-i)
+            p.set_initial_value(distance(p.object(f'p{j}'), p.object(f'p{i}')), j-i)
+
+    #last position is the depot
+    p.set_initial_value(is_depot(last_position),True)
+    for i in range(nPos):
+        p.set_initial_value(position_free(p.object(f'p{i}')),True)
 
     #Treatments are done over the various positions
-    for i in range(0,nTreatment):
-        if i == 0:
-            j = (i+1) % nPos #this is to avoid the the treatment is done at the depot
-        else:
-            j = i % nPos
-        p.set_initial_value(can_do(p.object(f"p{j}"),p.object(f"t{i}")),True)
+    for i in range(nTreatment):
+        treatment_position = i % (nPos-1)
+        p.set_initial_value(can_do(p.object(f'p{treatment_position}'),p.object(f't{i}')),True)
         for k in range(nPall):
-            p.add_goal(treated(p.object(f"plt{k}"),p.object(f"t{i}")))
+            p.add_goal(treated(p.object(f'plt{k}'),p.object(f't{i}')))
+
+    p.add_quality_metric(MinimizeMakespan())
 
     return p
 
+
 def get_test_cases():
-    problems = {f"majsp_{i}": TestCase(get_problem(i), True) for i in range(1)}
-    return problems
+    parameters_optimum = [
+        ([1, 1, 2, 1], Fraction(2002, 100)),
+    ]
+    test_cases = {}
+    for params, optimum in parameters_optimum:
+        problem = get_problems(*params)
+        test_cases[problem.name] = TestCase(problem, True, optimum)
+    return test_cases
