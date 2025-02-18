@@ -8,7 +8,7 @@ FILE_DIR = os.path.dirname(os.path.abspath(__file__))
 PDDL_FILES_DIR = os.path.join(FILE_DIR, "pddl_files")
 
 test_cases_optimal_values = {
-    "match_action_costs_v2_2_1": 70,
+    "match_action_costs_v2_2_1": 72,
 }
 
 get_test_cases = partial(add_optimum_to_test_cases, partial(_get_pddl_test_cases, PDDL_FILES_DIR), test_cases_optimal_values)

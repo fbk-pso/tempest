@@ -259,21 +259,3 @@ class TestHorizon(TestCase):
             problem = reader.parse_problem(domain_filename, problem_filename)
             min_correct_horizon = 4
             yield problem, min_correct_horizon
-
-
-
-
-
-
-
-
-
-
-
-
-
-        # with OneshotPlanner(name="tempest") as planner:
-        #     result = planner.solve(problem, output_stream = sys.stdout)
-        #     print(result.plan)
-
-        # assert False
