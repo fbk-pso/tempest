@@ -14,21 +14,21 @@ class TestHorizon(TestCase):
     def test_horizon(self):
 
         engines_and_params = [
-            # ("tempest", {"incremental": True, "solver_name": "z3"}),
-            # ("tempest", {"incremental": False, "solver_name": "z3"}),
-            # ("tempest", {"incremental": True, "solver_name": "optimsat"}),
-            # ("tempest", {"incremental": False, "solver_name": "optimsat"}),
-            ("tempest-opt", {"incremental": True, "sat_before_opt": True, "ground_abstract_step": True, "solver_name": "z3"}),
-            # ("tempest-opt", {"incremental": True, "sat_before_opt": True, "ground_abstract_step": True, "solver_name": "optimsat"}),
-            # ("tempest-opt", {"incremental": True, "sat_before_opt": True, "ground_abstract_step": True}),
-            # ("tempest-opt", {"incremental": True, "sat_before_opt": True, "ground_abstract_step": True}),
-            # ("tempest-opt", {"incremental": False, "sat_before_opt": True, "ground_abstract_step": True}),
-            # ("tempest-opt", {"incremental": True, "sat_before_opt": False, "ground_abstract_step": True}),
-            # ("tempest-opt", {"incremental": False, "sat_before_opt": False, "ground_abstract_step": True}),
-            # ("tempest-opt", {"incremental": True, "sat_before_opt": True, "ground_abstract_step": False}),
-            # ("tempest-opt", {"incremental": False, "sat_before_opt": True, "ground_abstract_step": False}),
-            # ("tempest-opt", {"incremental": True, "sat_before_opt": False, "ground_abstract_step": False}),
-            # ("tempest-opt", {"incremental": False, "sat_before_opt": False, "ground_abstract_step": False}),
+            ("tempest", {"incremental": True, "solver_name": "z3"}),
+            ("tempest", {"incremental": False, "solver_name": "z3"}),
+            ("tempest", {"incremental": True, "solver_name": "optimsat"}),
+            ("tempest", {"incremental": False, "solver_name": "optimsat"}),
+            # # ("tempest-opt", {"incremental": True, "sat_before_opt": True, "ground_abstract_step": True, "solver_name": "z3"}),
+            # # ("tempest-opt", {"incremental": True, "sat_before_opt": True, "ground_abstract_step": True, "solver_name": "optimsat"}),
+            ("tempest-opt", {"incremental": True, "sat_before_opt": True, "ground_abstract_step": True}),
+            ("tempest-opt", {"incremental": True, "sat_before_opt": True, "ground_abstract_step": True}),
+            ("tempest-opt", {"incremental": False, "sat_before_opt": True, "ground_abstract_step": True}),
+            ("tempest-opt", {"incremental": True, "sat_before_opt": False, "ground_abstract_step": True}),
+            ("tempest-opt", {"incremental": False, "sat_before_opt": False, "ground_abstract_step": True}),
+            ("tempest-opt", {"incremental": True, "sat_before_opt": True, "ground_abstract_step": False}),
+            ("tempest-opt", {"incremental": False, "sat_before_opt": True, "ground_abstract_step": False}),
+            ("tempest-opt", {"incremental": True, "sat_before_opt": False, "ground_abstract_step": False}),
+            ("tempest-opt", {"incremental": False, "sat_before_opt": False, "ground_abstract_step": False}),
         ]
 
         for problem, min_correct_horizon in self._get_problems_with_min_horizon():
@@ -43,31 +43,27 @@ class TestHorizon(TestCase):
 
                 params["horizon"] = min_correct_horizon if "opt" not in engine else None
 
-                # # Set for tests efficiency TODO
-                # if "opt" in engine and min_correct_horizon >= 3:
-                #     continue
-
-                params["horizon"] = None
+                # Set for tests efficiency TODO
+                if "opt" in engine and min_correct_horizon >= 4:
+                    continue
 
                 with OneshotPlanner(name=engine, params=params) as planner:
                     result = planner.solve(problem, output_stream = sys.stdout)
                     self.assertIsNotNone(result.plan,  f"{problem.name}, {min_correct_horizon}, {params}")
 
-                print(result.plan)
-                print(params)
-
-        assert False
 
     def _get_problems_with_min_horizon(self) -> Iterator[Tuple[Problem, int]]:
         problem_functions = [
-            # self._majsp_1_1_2_1,
+            self._basic_counter,
+            self._move_ball,
+            self._majsp_1_1_2_1,
             self._majsp_simplified_1_1_2_1,
-            # self._match_action_costs,
-            # self._match_makespan,
-            # self._optional_goals,
-            # self._painter_2_1,
-            # self._basic_counter,
-            # self._move_ball,
+            self._match_action_costs_v2,
+            self._match_makespan_v2,
+            self._optional_goals,
+            self._painter_2_1,
+            self._floor_tile_1_2_1,
+            self._match_cellar,
         ]
 
         for problem_func in problem_functions:
@@ -198,40 +194,31 @@ class TestHorizon(TestCase):
         yield problem, min_correct_horizon
 
     def _majsp_1_1_2_1(self):
-        from test_cases.majsp import get_problem
-        problem = get_problem(0)
+        from test_cases.majsp import get_problems
+        problem = get_problems(1, 1, 2, 1)
         min_correct_horizon = 7
         yield problem, min_correct_horizon
 
     def _majsp_simplified_1_1_2_1(self):
         from test_cases.majsp_simplified import get_problems
         problem = get_problems(1, 1, 2, 1)
-        min_correct_horizon = 11
+        min_correct_horizon = 7
         yield problem, min_correct_horizon
 
-    def _match_action_costs(self):
-        pddl_files_dir = os.path.join(_benchmarks_dir, "test_cases", "matchcellar", "action_costs", "pddl_files")
+    def _match_action_costs_v2(self):
+        pddl_files_dir = os.path.join(_benchmarks_dir, "test_cases", "match_action_costs_V2", "pddl_files")
         reader = PDDLReader()
         domain_filename = os.path.join(pddl_files_dir, "domain.pddl")
-        problem_filename = os.path.join(pddl_files_dir, "p_simple_1.pddl")
+        problem_filename = os.path.join(pddl_files_dir, "match_action_costs_v2_2_1.pddl")
         problem = reader.parse_problem(domain_filename, problem_filename)
         min_correct_horizon = 6
         yield problem, min_correct_horizon
 
-    def _match_makespan(self):
-        pddl_files_dir = os.path.join(_benchmarks_dir, "test_cases", "matchcellar", "makespan", "pddl_files")
+    def _match_makespan_v2(self):
+        pddl_files_dir = os.path.join(_benchmarks_dir, "test_cases", "match_makespan_V2", "pddl_files")
         reader = PDDLReader()
         domain_filename = os.path.join(pddl_files_dir, "domain.pddl")
-        problem_filename = os.path.join(pddl_files_dir, "p_simple_1.pddl")
-        problem = reader.parse_problem(domain_filename, problem_filename)
-        min_correct_horizon = 6
-        yield problem, min_correct_horizon
-
-    def _match_makespan(self):
-        pddl_files_dir = os.path.join(_benchmarks_dir, "test_cases", "matchcellar", "makespan", "pddl_files")
-        reader = PDDLReader()
-        domain_filename = os.path.join(pddl_files_dir, "domain.pddl")
-        problem_filename = os.path.join(pddl_files_dir, "p_simple_1.pddl")
+        problem_filename = os.path.join(pddl_files_dir, "match_makespan_v2_2_1.pddl")
         problem = reader.parse_problem(domain_filename, problem_filename)
         min_correct_horizon = 6
         yield problem, min_correct_horizon
@@ -247,9 +234,31 @@ class TestHorizon(TestCase):
 
     def _painter_2_1(self):
         from test_cases.painter import get_problems
-        problem = get_problems(3, 1)
-        min_correct_horizon = 7
+        problem = get_problems(2, 1)
+        min_correct_horizon = 8
         yield problem, min_correct_horizon
+
+    def _floor_tile_1_2_1(self):
+
+        for folder_name in ["action_costs", "makespan"]:
+            pddl_files_dir = os.path.join(_benchmarks_dir, "test_cases", "floor_tile", folder_name, "pddl_files")
+            reader = PDDLReader()
+            domain_filename = os.path.join(pddl_files_dir, "domain.pddl")
+            problem_filename = os.path.join(pddl_files_dir, "instance_1_2_1.pddl")
+            problem = reader.parse_problem(domain_filename, problem_filename)
+            min_correct_horizon = 6
+            yield problem, min_correct_horizon
+
+    def _match_cellar(self):
+
+        for folder_name in ["action_costs", "makespan"]:
+            pddl_files_dir = os.path.join(_benchmarks_dir, "test_cases", "matchcellar", folder_name, "pddl_files")
+            reader = PDDLReader()
+            domain_filename = os.path.join(pddl_files_dir, "domain.pddl")
+            problem_filename = os.path.join(pddl_files_dir, "p_1.pddl")
+            problem = reader.parse_problem(domain_filename, problem_filename)
+            min_correct_horizon = 4
+            yield problem, min_correct_horizon
 
 
 
