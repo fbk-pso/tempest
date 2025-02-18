@@ -785,6 +785,7 @@ class BaseEncoder(ABC):
                 # be relevant in the abstract steps (for example it still has to end)
                 # TODO possible improvements?
                 parameters_assignment = {}
+                lifted_a = b
                 if self.ground_abstract_step:
                     lifted_ai = self.map_back_action_instance(b())
                     lifted_a, params_a = lifted_ai.action, lifted_ai.actual_parameters
