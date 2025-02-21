@@ -12,7 +12,10 @@ class MonolithicEncoder(BaseEncoder):
             smt_tp_1 = self.encode_problem_tp(it.lower, h)
         else:
             smt_tp_1 = self.encode_tp(action, it.lower, w, h)
-        start_condition_after_last_concrete_step = self.mgr.LT(last_concrete_step_time, smt_tp_1)
+        if it.is_left_open():
+            start_condition_after_last_concrete_step = self.mgr.LE(last_concrete_step_time, smt_tp_1)
+        else:
+            start_condition_after_last_concrete_step = self.mgr.LT(last_concrete_step_time, smt_tp_1)
         condition_last_concrete_step = self.to_smt(c, h-1, w, action)
         condition_abstract_step = self.mgr.Or((self.fluent_mod(exp, action, w) for exp in self._get_sorted_free_vars(c)))
         return self.mgr.Implies(start_condition_after_last_concrete_step, self.mgr.Or(condition_last_concrete_step, condition_abstract_step))
@@ -105,14 +108,14 @@ class MonolithicEncoder(BaseEncoder):
                 if self.ground_abstract_step:
                     concrete_ai = self.map_back_action_instance(action())
                     concrete_action = concrete_ai.action
-                    parameters_assignment = dict(zip(action.parameters, concrete_ai.actual_parameters))
+                    parameters_assignment = dict(zip(concrete_action.parameters, concrete_ai.actual_parameters))
                     # TODO: future improvements, it would be nice to remove action parameters that do not
                     # appear in the effect from the assignment mapping
                 for i in range(1, h):
                     a_i = self.a(concrete_action, i)
                     parameters_equality = []
                     for param_exp, obj_exp in parameters_assignment.items():
-                        parameters_equality.append(self.mgr.EqualsOrIff(self.to_smt(param_exp, i, i, scope=concrete_action), self.to_smt(obj_exp, i)))
+                        parameters_equality.append(self.mgr.EqualsOrIff(self.to_smt(self.em.ParameterExp(param_exp), i, i, scope=concrete_action), self.to_smt(obj_exp, i)))
                     p_eq = self.mgr.And(parameters_equality)
                     effect_time = self.encode_tp(concrete_action, timing, i, h)
                     effect_in_abstract_step = self.mgr.GT(effect_time, last_concrete_step_time)
@@ -181,11 +184,13 @@ class MonolithicEncoder(BaseEncoder):
         res.append(self.encode_timed_goals(h, self.optimal))
 
         # Goals
-        for g in self.problem.goals:
-            goal_formula = self.to_smt(g, h - 1)
-            if self.optimal:
-                goal_formula = self.mgr.Or(chain([goal_formula], (self.fluent_mod(exp, None, None) for exp in self._get_sorted_free_vars(g))))
-            res.append(goal_formula)
+        for goal in self.problem.goals:
+            goals = goal.args if goal.is_and() else [goal]
+            for g in goals:
+                goal_formula = self.to_smt(g, h - 1)
+                if self.optimal:
+                    goal_formula = self.mgr.Or(chain([goal_formula], (self.fluent_mod(exp, None, None) for exp in self._get_sorted_free_vars(g))))
+                res.append(goal_formula)
 
         # fluent_mod variables
         for fluent_mod_var, (fluent, fluent_exp) in self.fluent_mod_var.items():
