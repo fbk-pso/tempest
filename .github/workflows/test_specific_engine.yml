@@ -66,4 +66,4 @@ jobs:
           echo -e "[engine ${{inputs.engine-name}}]\nmodule_name: tempest.engine\nclass_name: ${{inputs.engine-class}}" > .up.ini
 
       - name: Run the report
-        run: python3 unified-planning/up_test_cases/report.py ${{inputs.engine-name}} -m oneshot -t 3 -e test_cases -b logistic
+        run: python3 unified-planning/up_test_cases/report.py ${{inputs.engine-name}} -m oneshot -t 3 -e test_cases -b logistic farmland classical:depots parking counter_to_50

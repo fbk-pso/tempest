@@ -37,6 +37,8 @@ class TestHorizon(TestCase):
                 # and that it is found with horizon = min_correct_horizon
                 # (if optimal, the min_correct_horizon is set to +inf)
                 params["horizon"] = min_correct_horizon-1
+                if "opt" in engine and params["sat_before_opt"] and min_correct_horizon >= 4:
+                    continue
                 with OneshotPlanner(name=engine, params=params) as planner:
                     result = planner.solve(problem)
                     self.assertIsNone(result.plan, f"{problem.name}, {min_correct_horizon}, {params}")

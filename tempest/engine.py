@@ -323,14 +323,14 @@ class TempestOptimal(_BaseEngine):
                     if uses_abstract_step:
                         elapsed_time = time() - start_time
                         if output_stream is not None:
-                            output_stream.write(f"Makespan with bound {h}: {float(makespan.constant_value())}. Elapsed_time: {elapsed_time:.3f} seconds\n")
+                            output_stream.write(f"Makespan with bound {h}: {makespan}. Elapsed_time: {elapsed_time:.3f} seconds\n")
                         h += 1
                         if timeout is not None and elapsed_time > timeout:
                             is_in_timeout = True
                             break
                     else:
                         if output_stream is not None:
-                            output_stream.write(f"OPT solution with bound {h}: {float(makespan.constant_value())}. Elapsed_time: {elapsed_time:.3f} seconds\n")
+                            output_stream.write(f"OPT solution with bound {h}: {makespan}. Elapsed_time: {elapsed_time:.3f} seconds\n")
                         plan = encoder.extract_plan(model, h)
                         assert plan is not None
                         status = PlanGenerationResultStatus.SOLVED_OPTIMALLY if problem.quality_metrics  else PlanGenerationResultStatus.SOLVED_SATISFICING
