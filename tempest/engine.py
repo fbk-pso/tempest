@@ -139,6 +139,7 @@ class TempestEngine(_BaseEngine):
             h = 2
             while self.horizon is None or h <= self.horizon:
                 print(f"last-step: {h}", file=sys.stderr)
+                sys.stderr.flush()
                 formula, assumptions = encoder.encode_step(modify_horizon(h))
                 if formula is not None:
                     smt.add_assertion(formula)
@@ -151,6 +152,7 @@ class TempestEngine(_BaseEngine):
                     )
                     print(f"last-step: {h}", file=sys.stderr)
                     print(f"sat-step: {h}", file=sys.stderr)
+                    sys.stderr.flush()
                     return res
                 else:
                     elapsed_time = time() - start_time
@@ -249,6 +251,7 @@ class TempestOptimal(_BaseEngine):
                     smt.add_assertion(step_zero)
                 while self.horizon is None or h <= self.horizon:
                     print(f"last-step: {h}", file=sys.stderr)
+                    sys.stderr.flush()
                     formula, assumptions = encoder.encode_step(modify_horizon(h))
                     if formula is not None:
                         smt.add_assertion(formula)
@@ -280,6 +283,7 @@ class TempestOptimal(_BaseEngine):
             first_sat_step = 2
 
         print(f"sat-step: {first_sat_step}", file=sys.stderr)
+        sys.stderr.flush()
 
         # Optimality part
         modify_horizon = lambda x: x
@@ -309,6 +313,7 @@ class TempestOptimal(_BaseEngine):
 
             while self.horizon is None or h <= self.horizon:
                 print(f"last-step: {h}", file=sys.stderr)
+                sys.stderr.flush()
                 formula, assumptions = encoder.encode_step(modify_horizon(h))
                 if formula is not None:
                     omt.add_assertion(formula)
@@ -349,6 +354,7 @@ class TempestOptimal(_BaseEngine):
                             self.name,
                         )
                         print(f"opt-step: {h}", file=sys.stderr)
+                        sys.stderr.flush()
                         return res
 
                 else:
