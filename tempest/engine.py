@@ -4,6 +4,8 @@ import pysmt
 import warnings
 import unified_planning as up
 
+import sys
+
 from unified_planning.model import ProblemKind
 from unified_planning.engines import (
     PlanGenerationResultStatus,
@@ -136,6 +138,7 @@ class TempestEngine(_BaseEngine):
                 smt.add_assertion(step_zero)
             h = 2
             while self.horizon is None or h <= self.horizon:
+                print(f"last-step: {h}", file=sys.stderr)
                 formula, assumptions = encoder.encode_step(modify_horizon(h))
                 if formula is not None:
                     smt.add_assertion(formula)
@@ -146,8 +149,8 @@ class TempestEngine(_BaseEngine):
                         plan,
                         self.name,
                     )
-                    print(f"last-step: {h}")
-                    print(f"sat-step: {h}")
+                    print(f"last-step: {h}", file=sys.stderr)
+                    print(f"sat-step: {h}", file=sys.stderr)
                     return res
                 else:
                     elapsed_time = time() - start_time
@@ -160,8 +163,6 @@ class TempestEngine(_BaseEngine):
 
         status = PlanGenerationResultStatus.TIMEOUT if is_in_timeout else PlanGenerationResultStatus.UNSOLVABLE_INCOMPLETELY
 
-
-        print(f"last-step: {h}")
         return PlanGenerationResult(
             status, None, self.name
         )
@@ -247,7 +248,7 @@ class TempestOptimal(_BaseEngine):
                 if step_zero is not None:
                     smt.add_assertion(step_zero)
                 while self.horizon is None or h <= self.horizon:
-                    print(f"last-step: {h}")
+                    print(f"last-step: {h}", file=sys.stderr)
                     formula, assumptions = encoder.encode_step(modify_horizon(h))
                     if formula is not None:
                         smt.add_assertion(formula)
@@ -267,12 +268,10 @@ class TempestOptimal(_BaseEngine):
                         break
 
             if is_in_timeout:
-                print(f"last-step: {h}")
                 return PlanGenerationResult(
                     PlanGenerationResultStatus.TIMEOUT, None, self.name
                 )
             if first_sat_step == 0:
-                print(f"last-step: {h}")
                 return PlanGenerationResult(
                     PlanGenerationResultStatus.UNSOLVABLE_INCOMPLETELY, None, self.name
                 )
@@ -280,7 +279,7 @@ class TempestOptimal(_BaseEngine):
             # Start using OMT from first step
             first_sat_step = 2
 
-        print(f"sat-step: {h}")
+        print(f"sat-step: {first_sat_step}", file=sys.stderr)
 
         # Optimality part
         modify_horizon = lambda x: x
@@ -309,7 +308,7 @@ class TempestOptimal(_BaseEngine):
                 h = first_sat_step
 
             while self.horizon is None or h <= self.horizon:
-                print(f"last-step: {h}")
+                print(f"last-step: {h}", file=sys.stderr)
                 formula, assumptions = encoder.encode_step(modify_horizon(h))
                 if formula is not None:
                     omt.add_assertion(formula)
@@ -349,8 +348,7 @@ class TempestOptimal(_BaseEngine):
                             plan,
                             self.name,
                         )
-                        print(f"last-step: {h}")
-                        print(f"opt-step: {h}")
+                        print(f"opt-step: {h}", file=sys.stderr)
                         return res
 
                 else:
@@ -360,7 +358,6 @@ class TempestOptimal(_BaseEngine):
 
         status = PlanGenerationResultStatus.TIMEOUT if is_in_timeout else PlanGenerationResultStatus.UNSOLVABLE_INCOMPLETELY
 
-        print(f"last-step: {h}")
         return PlanGenerationResult(
             status, None, self.name
         )
