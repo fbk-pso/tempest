@@ -47,6 +47,9 @@ jobs:
       - name: Install optimsat using pysmt
         run: pysmt-install --optimsat --confirm-agreement
 
+      - name: Install z3 using pysmt
+        run: pysmt-install --z3 --confirm-agreement
+
       - name: Checkout unified-planning
         uses: actions/checkout@v2
         with:

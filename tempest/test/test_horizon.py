@@ -18,17 +18,22 @@ class TestHorizon(TestCase):
             ("tempest", {"incremental": False, "solver_name": "z3"}),
             ("tempest", {"incremental": True, "solver_name": "optimsat"}),
             ("tempest", {"incremental": False, "solver_name": "optimsat"}),
-            # # ("tempest-opt", {"incremental": True, "sat_before_opt": True, "ground_abstract_step": True, "solver_name": "z3"}),
-            # # ("tempest-opt", {"incremental": True, "sat_before_opt": True, "ground_abstract_step": True, "solver_name": "optimsat"}),
-            ("tempest-opt", {"incremental": True, "sat_before_opt": True, "ground_abstract_step": True}),
-            ("tempest-opt", {"incremental": True, "sat_before_opt": True, "ground_abstract_step": True}),
-            ("tempest-opt", {"incremental": False, "sat_before_opt": True, "ground_abstract_step": True}),
-            ("tempest-opt", {"incremental": True, "sat_before_opt": False, "ground_abstract_step": True}),
-            ("tempest-opt", {"incremental": False, "sat_before_opt": False, "ground_abstract_step": True}),
-            ("tempest-opt", {"incremental": True, "sat_before_opt": True, "ground_abstract_step": False}),
-            ("tempest-opt", {"incremental": False, "sat_before_opt": True, "ground_abstract_step": False}),
-            ("tempest-opt", {"incremental": True, "sat_before_opt": False, "ground_abstract_step": False}),
-            ("tempest-opt", {"incremental": False, "sat_before_opt": False, "ground_abstract_step": False}),
+            ("tempest-opt", {"incremental": True, "sat_before_opt": True, "ground_abstract_step": True, "secondary_objective": True}),
+            ("tempest-opt", {"incremental": False, "sat_before_opt": True, "ground_abstract_step": True, "secondary_objective": True}),
+            ("tempest-opt", {"incremental": True, "sat_before_opt": False, "ground_abstract_step": True, "secondary_objective": True}),
+            ("tempest-opt", {"incremental": False, "sat_before_opt": False, "ground_abstract_step": True, "secondary_objective": True}),
+            ("tempest-opt", {"incremental": True, "sat_before_opt": True, "ground_abstract_step": False, "secondary_objective": True}),
+            ("tempest-opt", {"incremental": False, "sat_before_opt": True, "ground_abstract_step": False, "secondary_objective": True}),
+            ("tempest-opt", {"incremental": True, "sat_before_opt": False, "ground_abstract_step": False, "secondary_objective": True}),
+            ("tempest-opt", {"incremental": False, "sat_before_opt": False, "ground_abstract_step": False, "secondary_objective": True}),
+            ("tempest-opt", {"incremental": True, "sat_before_opt": True, "ground_abstract_step": True, "secondary_objective": False}),
+            ("tempest-opt", {"incremental": False, "sat_before_opt": True, "ground_abstract_step": True, "secondary_objective": False}),
+            ("tempest-opt", {"incremental": True, "sat_before_opt": False, "ground_abstract_step": True, "secondary_objective": False}),
+            ("tempest-opt", {"incremental": False, "sat_before_opt": False, "ground_abstract_step": True, "secondary_objective": False}),
+            ("tempest-opt", {"incremental": True, "sat_before_opt": True, "ground_abstract_step": False, "secondary_objective": False}),
+            ("tempest-opt", {"incremental": False, "sat_before_opt": True, "ground_abstract_step": False, "secondary_objective": False}),
+            ("tempest-opt", {"incremental": True, "sat_before_opt": False, "ground_abstract_step": False, "secondary_objective": False}),
+            ("tempest-opt", {"incremental": False, "sat_before_opt": False, "ground_abstract_step": False, "secondary_objective": False}),
         ]
 
         for problem, min_correct_horizon in self._get_problems_with_min_horizon():
@@ -69,7 +74,6 @@ class TestHorizon(TestCase):
         ]
 
         for problem_func in problem_functions:
-
             for problem, min_correct_horizon in problem_func():
                 yield problem, min_correct_horizon
         # for problem, min_correct_horizon in self._move_ball():
@@ -241,7 +245,6 @@ class TestHorizon(TestCase):
         yield problem, min_correct_horizon
 
     def _floor_tile_1_2_1(self):
-
         for folder_name in ["action_costs", "makespan"]:
             pddl_files_dir = os.path.join(_benchmarks_dir, "test_cases", "floor_tile", folder_name, "pddl_files")
             reader = PDDLReader()
@@ -252,7 +255,6 @@ class TestHorizon(TestCase):
             yield problem, min_correct_horizon
 
     def _match_cellar(self):
-
         for folder_name in ["action_costs", "makespan"]:
             pddl_files_dir = os.path.join(_benchmarks_dir, "test_cases", "matchcellar", folder_name, "pddl_files")
             reader = PDDLReader()
