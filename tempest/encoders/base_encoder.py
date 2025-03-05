@@ -5,7 +5,7 @@ from functools import lru_cache
 from abc import ABC, abstractmethod
 import warnings
 import pysmt
-from pysmt.optimization.goal import MaxSMTGoal, MinMaxGoal
+from pysmt.optimization.goal import MaxSMTGoal, MinimizationGoal
 
 import unified_planning as up
 from unified_planning.engines import CompilationKind
@@ -35,7 +35,7 @@ Toucher = Tuple[Optional[Action], Optional[Timing], Effect]
 
 class BaseEncoder(ABC):
     def __init__(self, problem: Problem, pysmt_env: pysmt.environment.Environment, epsilon: Optional[Fraction] = None, optimal: bool = False,
-                 ground_abstract_step: bool = True, grounder_name: Optional[str] = None):
+                 ground_abstract_step: bool = True, grounder_name: Optional[str] = None, secondary_objective: bool = True):
         self.problem = problem
         self.epsilon = epsilon
         self.simplifier = Simplifier(problem.environment, problem)
@@ -45,6 +45,7 @@ class BaseEncoder(ABC):
         self.mgr = self.pysmt_env.formula_manager
         self.optimal = optimal
         self.ground_abstract_step = ground_abstract_step
+        self.secondary_objective = secondary_objective
         grounded_problem = problem
         self.map_back_action_instance = lambda x: x
         if ground_abstract_step and optimal:
@@ -834,25 +835,32 @@ class BaseEncoder(ABC):
         assert len(self.problem.quality_metrics) < 2, "Problem has more than one quality metric"
         metric = self.problem.quality_metrics[0] if self.problem.quality_metrics else None
         if metric is None or metric.is_minimize_makespan():
-            terms = [self.t(i)]
+            makespan = self.mgr.FreshSymbol(pysmt.typing.REAL, "makespan%d")
+            terms = [self.mgr.GE(makespan, self.t(i))]
             for act in self.problem.actions:
                 if isinstance(act, DurativeAction):
                     for j in range(1, i+1):
-                        terms.append(self.mgr.Plus(self.t(j), self.dur(act, j)))
+                        terms.append(self.mgr.GE(makespan, self.mgr.Plus(self.t(j), self.dur(act, j))))
             timed_goals_timings = chain(*map(lambda x: (x.lower, x.upper), self.problem.timed_goals.keys()))
             problem_timings = chain(timed_goals_timings, self.problem.timed_effects.keys())
             for timing in filter(lambda x: x.is_from_start(), problem_timings):
                 assert isinstance(timing, Timing)
-                terms.append(self.encode_problem_tp(timing, h))
+                terms.append(self.mgr.GE(makespan, self.encode_problem_tp(timing, h)))
             for a in self.abstract_step_actions:
                 t_a = self.t_a(a, i+1)
                 if isinstance(a, InstantaneousAction):
-                    terms.append(t_a)
+                    terms.append(self.mgr.GE(makespan, t_a))
                 else:
-                    terms.append(self.mgr.Plus(t_a, self.dur(a, i+1)))
-            return MinMaxGoal(terms), None
+                    terms.append(self.mgr.GE(makespan, self.mgr.Plus(t_a, self.dur(a, i+1))))
+            if self.secondary_objective:
+                return MinimizationGoal(self.mgr.Ite(self.uses_abstact_step(i, h), self.mgr.Plus(makespan, self.mgr.Real((1, 100) if self.epsilon is None else self.epsilon)), makespan)), terms
+            else:
+                return MinimizationGoal(makespan), terms
         elif metric.is_minimize_action_costs():
-            return self._get_max_smt_goal(metric, i+1), None
+            obj = self._get_max_smt_goal(metric, i+1), None
+            if self.secondary_objective:
+                obj[0].add_soft_clause(self.mgr.Not(self.uses_abstact_step(i, h)), 0.01)
+            return obj
         else:
             raise NotImplementedError(f"Metric {metric} not supported")
 

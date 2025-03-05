@@ -177,11 +177,12 @@ class TempestNonIncremental(TempestEngine):
 
 class TempestOptimal(_BaseEngine):
     """Implementation of the TemPEST Optimal Engine."""
-    def __init__(self, incremental=True, horizon=None, solver_name=None, ground_abstract_step: bool = True, grounder_name: Optional[str] = None, sat_before_opt: bool = True):
+    def __init__(self, incremental=True, horizon=None, solver_name=None, ground_abstract_step: bool = True, grounder_name: Optional[str] = None, sat_before_opt: bool = True, secondary_objective: bool = True):
         super().__init__(incremental, horizon, solver_name)
         self.ground_abstract_step = ground_abstract_step
         self.grounder_name = grounder_name
         self.sat_before_opt = sat_before_opt
+        self.secondary_objective = secondary_objective
 
     @property
     def name(self) -> str:
@@ -289,11 +290,11 @@ class TempestOptimal(_BaseEngine):
         modify_horizon = lambda x: x
         if self.incremental:
             encoder = IncrementalEncoder(problem, pysmt_env=pysmt_env, epsilon=epsilon, optimal=True,
-                ground_abstract_step=self.ground_abstract_step, grounder_name=self.grounder_name)
+                ground_abstract_step=self.ground_abstract_step, grounder_name=self.grounder_name, secondary_objective=self.secondary_objective)
             modify_horizon = lambda x: x-1
         else:
             encoder = MonolithicEncoder(problem, pysmt_env=pysmt_env, epsilon=epsilon, optimal=True,
-                ground_abstract_step=self.ground_abstract_step, grounder_name=self.grounder_name)
+                ground_abstract_step=self.ground_abstract_step, grounder_name=self.grounder_name, secondary_objective=self.secondary_objective)
 
         h = 2
         with pysmt_env.factory.Optimizer(name=self.solver_name, logic="QF_LRA") as omt:
