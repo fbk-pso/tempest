@@ -35,7 +35,7 @@ Toucher = Tuple[Optional[Action], Optional[Timing], Effect]
 
 class BaseEncoder(ABC):
     def __init__(self, problem: Problem, pysmt_env: pysmt.environment.Environment, epsilon: Optional[Fraction] = None, optimal: bool = False,
-                 ground_abstract_step: bool = True, grounder_name: Optional[str] = None, secondary_objective: bool = True):
+                 ground_abstract_step: bool = True, grounder_name: Optional[str] = None, secondary_objective: Optional[str] = "weighted"):
         self.problem = problem
         self.epsilon = epsilon
         self.simplifier = Simplifier(problem.environment, problem)
@@ -852,20 +852,32 @@ class BaseEncoder(ABC):
                     terms.append(self.mgr.GE(makespan, t_a))
                 else:
                     terms.append(self.mgr.GE(makespan, self.mgr.Plus(t_a, self.dur(a, i+1))))
-            if self.secondary_objective:
-                return MinimizationGoal(self.mgr.Ite(self.uses_abstact_step(i, h), self.mgr.Plus(makespan, self.mgr.Real((1, 100) if self.epsilon is None else self.epsilon)), makespan)), terms
+            if self.secondary_objective is None:
+                return [MinimizationGoal(makespan)], terms
+            elif self.secondary_objective == "weighted":
+                return [MinimizationGoal(self.mgr.Ite(self.uses_abstact_step(i, h), self.mgr.Plus(makespan, self.mgr.Real((1, 1000)) if self.epsilon is None else self.mgr.Real(self.epsilon/2)), makespan))], terms
+            elif self.secondary_objective == "lexicographic":
+                return [MinimizationGoal(makespan), MinimizationGoal(self.mgr.Ite(self.uses_abstact_step(i, h), self.mgr.Int(1), self.mgr.Int(0)))], terms
             else:
-                return MinimizationGoal(makespan), terms
+                raise ValueError(f"Secondary objective {self.secondary_objective} unknown")
         elif metric.is_minimize_action_costs():
-            obj = self._get_max_smt_goal(metric, i+1), None
-            if self.secondary_objective:
-                obj[0].add_soft_clause(self.mgr.Not(self.uses_abstact_step(i, h)), 0.01)
-            return obj
+            max_smt_goal, min_goal = self._get_max_smt_and_minimization_goal(metric, i+1)
+            if self.secondary_objective is None:
+                objs = [max_smt_goal]
+            elif self.secondary_objective == "weighted":
+                max_smt_goal.add_soft_clause(self.mgr.Not(self.uses_abstact_step(i, h)), 0.001)
+                objs = [max_smt_goal]
+            elif self.secondary_objective == "lexicographic":
+                objs = [min_goal, MinimizationGoal(self.mgr.Ite(self.uses_abstact_step(i, h), self.mgr.Int(1), self.mgr.Int(0)))]
+            else:
+                raise ValueError(f"Secondary objective {self.secondary_objective} unknown")
+            return objs, None
         else:
             raise NotImplementedError(f"Metric {metric} not supported")
 
-    def _get_max_smt_goal(self, metric, h: int) -> MaxSMTGoal:
-        goal = MaxSMTGoal()
+    def _get_max_smt_and_minimization_goal(self, metric, h: int) -> MaxSMTGoal:
+        max_smt_goal = MaxSMTGoal()
+        costs = []
         range_lim = h if self.ground_abstract_step else h+1
         for a in self.problem.actions:
             for assignments, cost in self._get_action_costs(metric, a):
@@ -875,7 +887,8 @@ class BaseEncoder(ABC):
                     for param_exp, obj_exp in assignments.items():
                         assert param_exp.is_parameter_exp()
                         clauses.append(self.mgr.EqualsOrIff(self.to_smt(param_exp, i, scope=a), self.to_smt(obj_exp, i)))
-                    goal.add_soft_clause(self.mgr.Not(self.mgr.And(clauses)), weight)
+                    costs.append(self.mgr.Ite(self.mgr.And(clauses), self.mgr.Real(weight), self.mgr.Real(0)))
+                    max_smt_goal.add_soft_clause(self.mgr.Not(self.mgr.And(clauses)), weight)
 
         # The cost of the action in the abstract step must be added
         if self.ground_abstract_step:
@@ -884,8 +897,9 @@ class BaseEncoder(ABC):
             for a in self.abstract_step_actions:
                 cost = self.simplifier.simplify(grounded_metric.get_action_cost(a))
                 weight = cost.constant_value()
-                goal.add_soft_clause(self.mgr.Not(self.a(a, h)), weight)
-        return goal
+                costs.append(self.mgr.Ite(self.a(a, h), self.mgr.Real(weight), self.mgr.Real(0)))
+                max_smt_goal.add_soft_clause(self.mgr.Not(self.a(a, h)), weight)
+        return max_smt_goal, MinimizationGoal(self.mgr.Plus(costs))
 
     @lru_cache(maxsize=None)
     def _get_action_costs(self, metric: MinimizeActionCosts, action: Action) -> List[Tuple[Dict[FNode, FNode], FNode]]:
