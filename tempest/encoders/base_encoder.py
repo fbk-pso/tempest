@@ -82,7 +82,7 @@ class BaseEncoder(ABC):
         if ground_abstract_step:
             self.abstract_step_touchers = self._get_touchers(grounded_problem)
 
-        self._mutex_couples: Set[FrozenSet[Event]] = self._get_mutex_couples()
+        self._mutex_couples = self._get_mutex_couples()
 
     def converter(self, i: int, w: Optional[int], scope: Optional[Action]):
         key = (None, i, w) if scope is None else (scope.name, i, w)
@@ -347,25 +347,39 @@ class BaseEncoder(ABC):
         return self.mgr.And(res)
 
     def is_mutex(self, a_precond: Iterable[FNode], a_effects: Iterable[Effect], b_precond: Iterable[FNode], b_effects: Iterable[Effect]):
+        a_p = {}
+        for p in a_precond:
+            for x in self._get_sorted_free_vars(p):
+                a_p.setdefault(x.fluent(), []).append(x)
 
-        a_p = set(x.fluent() for p in a_precond for x in self._get_sorted_free_vars(p))
-        b_p = set(x.fluent() for p in b_precond for x in self._get_sorted_free_vars(p))
+        b_p = {}
+        for p in b_precond:
+            for x in self._get_sorted_free_vars(p):
+                b_p.setdefault(x.fluent(), []).append(x)
 
-        def get_red_fluents(effect):
+        def add_red_fluents(p, effect):
             for x in chain(*map(self._get_sorted_free_vars, (effect.condition, effect.fluent, effect.value))):
-                yield x.fluent()
+                p.setdefault(x.fluent(), []).append(x)
 
-        a_e = set()
+        a_e = {}
         for e in a_effects:
-            a_e.add(e.fluent.fluent())
-            a_p.update(get_red_fluents(e))
+            a_e.setdefault(e.fluent.fluent(), []).append(e.fluent)
+            add_red_fluents(a_p, e)
 
-        b_e = set()
+        b_e = {}
         for e in b_effects:
-            b_e.add(e.fluent.fluent())
-            b_p.update(get_red_fluents(e))
+            b_e.setdefault(e.fluent.fluent(), []).append(e.fluent)
+            add_red_fluents(b_p, e)
 
-        return not (a_p.isdisjoint(b_e) and b_p.isdisjoint(a_e) and a_e.isdisjoint(b_e))
+        clauses = []
+        for s1, s2 in ((a_p, b_e), (b_p, a_e), (a_e, b_e)):
+            for f in set(s1.keys()).intersection(set(s2.keys())):
+                a_f_exp = s1[f]
+                b_f_exp = s2[f]
+                for f1, f2 in product(a_f_exp, b_f_exp):
+                    clauses.append((f1, f2))
+
+        return clauses
 
     def encode_non_self_overlapping(self, i: int):
         res = []
@@ -470,8 +484,8 @@ class BaseEncoder(ABC):
 
         return events
 
-    def _get_mutex_couples(self) -> Set[FrozenSet[Event]]:
-        mutex_couples: Set[FrozenSet[Event]] = set()
+    def _get_mutex_couples(self):
+        mutex_couples = []
         events = list(self._get_events())
         for i, event_a in enumerate(events):
             action_a, timing_a, cond_a, eff_a = event_a
@@ -479,10 +493,11 @@ class BaseEncoder(ABC):
                 action_b, timing_b, cond_b, eff_b = event_b
                 if action_a == action_b and (action_a is None or timing_a == timing_b):
                     continue
-                if self.is_mutex(cond_a, eff_a, cond_b, eff_b):
-                    mutex_couples.add(frozenset(((action_a, timing_a), (action_b, timing_b))))
+                mutex_conds = self.is_mutex(cond_a, eff_a, cond_b, eff_b)
+                if mutex_conds:
+                    mutex_couples.append(((action_a, timing_a), (action_b, timing_b), mutex_conds))
             if action_a is not None:
-                mutex_couples.add(frozenset([(action_a, timing_a)]))
+                mutex_couples.append(((action_a, timing_a), ))
         return mutex_couples
 
     def _get_touchers(self, problem: Problem) -> Dict[Fluent, Dict[FNode, List[Toucher]]]:
@@ -517,14 +532,15 @@ class BaseEncoder(ABC):
                 return self.encode_problem_tp(timing, h)
 
         for mutex_element in self._mutex_couples:
-            if len(mutex_element) == 2:
-                (action_a, timing_a), (action_b, timing_b) = mutex_element
+            if len(mutex_element) == 3:
+                (action_a, timing_a), (action_b, timing_b), mutex_conds = mutex_element
             else:
                 # Expand case where only 1 element is in the mutex couples
                 # meaning the event must be in mutex with itself
                 assert len(mutex_element) == 1
                 ((action_a, timing_a), ) = mutex_element
                 ((action_b, timing_b), ) = mutex_element
+                mutex_conds = []
 
             def is_global_end(timing):
                 return timing.is_global() and timing.is_from_end()
@@ -543,21 +559,24 @@ class BaseEncoder(ABC):
                 b_a = self.mgr.LT(self.mgr.Minus(time_of_b, time_of_a), eps)
                 same_timing = self.mgr.And(a_b, b_a)
 
+            mutex_cond = self.mgr.TRUE()
+            for (f1, f2) in mutex_conds:
+                mutex_cond = self.mgr.And([self.mgr.EqualsOrIff(self.to_smt(f1c, i, i, action_a), self.to_smt(f2c, j, j, action_b)) for f1c, f2c in zip(f1.args, f2.args)])
 
             if action_a is None:
                 assert action_b is not None
                 # a is a tils, b is an action
                 b_j = self.a(action_b, j)
-                res.append(self.mgr.Not(self.mgr.And(b_j, same_timing)))
+                res.append(self.mgr.Not(self.mgr.And(b_j, same_timing, mutex_cond)))
             else:
                 a_i = self.a(action_a, i)
                 if action_b is None:
                     # a is an action, b is a tils
-                    res.append(self.mgr.Not(self.mgr.And(a_i, same_timing)))
+                    res.append(self.mgr.Not(self.mgr.And(a_i, same_timing, mutex_cond)))
                 else:
                     # both are actions
                     b_j = self.a(action_b, j)
-                    res.append(self.mgr.Not(self.mgr.And(a_i, b_j, same_timing)))
+                    res.append(self.mgr.Not(self.mgr.And(a_i, b_j, same_timing, mutex_cond)))
 
         return self.mgr.And(res)
 
@@ -857,7 +876,7 @@ class BaseEncoder(ABC):
             elif self.secondary_objective == "weighted":
                 return [MinimizationGoal(self.mgr.Ite(self.uses_abstact_step(i, h), self.mgr.Plus(makespan, self.mgr.Real((1, 1000)) if self.epsilon is None else self.mgr.Real(self.epsilon/2)), makespan))], terms
             elif self.secondary_objective == "lexicographic":
-                return [MinimizationGoal(makespan), MinimizationGoal(self.mgr.Ite(self.uses_abstact_step(i, h), self.mgr.Int(1), self.mgr.Int(0)))], terms
+                return [MinimizationGoal(makespan), MinimizationGoal(self.mgr.Ite(self.uses_abstact_step(i, h), self.mgr.Real(1), self.mgr.Real(0)))], terms
             else:
                 raise ValueError(f"Secondary objective {self.secondary_objective} unknown")
         elif metric.is_minimize_action_costs():
@@ -868,7 +887,7 @@ class BaseEncoder(ABC):
                 max_smt_goal.add_soft_clause(self.mgr.Not(self.uses_abstact_step(i, h)), 0.001)
                 objs = [max_smt_goal]
             elif self.secondary_objective == "lexicographic":
-                objs = [min_goal, MinimizationGoal(self.mgr.Ite(self.uses_abstact_step(i, h), self.mgr.Int(1), self.mgr.Int(0)))]
+                objs = [min_goal, MinimizationGoal(self.mgr.Ite(self.uses_abstact_step(i, h), self.mgr.Real(1), self.mgr.Real(0)))]
             else:
                 raise ValueError(f"Secondary objective {self.secondary_objective} unknown")
             return objs, None
