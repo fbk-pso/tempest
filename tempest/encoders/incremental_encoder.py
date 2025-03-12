@@ -257,7 +257,8 @@ class IncrementalEncoder(BaseEncoder):
         # Mutex constraints
         for j in range(1, i+1):
             res.append(self.encode_mutex_constraints(j, i, h=None))
-            res.append(self.encode_mutex_constraints(i, j, h=None))
+            if i != j:
+                res.append(self.encode_mutex_constraints(i, j, h=None))
 
         # Add type constraints
         for c in self.symenc.type_constraints.get(i, []):

@@ -372,7 +372,7 @@ class BaseEncoder(ABC):
             add_red_fluents(b_p, e)
 
         clauses = []
-        for s1, s2 in ((a_p, b_e), (b_p, a_e), (a_e, b_e)):
+        for s1, s2 in ((a_p, b_e), (a_e, b_p), (a_e, b_e)):
             for f in set(s1.keys()).intersection(set(s2.keys())):
                 a_f_exp = s1[f]
                 b_f_exp = s2[f]
@@ -545,7 +545,7 @@ class BaseEncoder(ABC):
             def is_global_end(timing):
                 return timing.is_global() and timing.is_from_end()
 
-            if (i == j and action_a == action_b) or is_global_end(timing_a) or is_global_end(timing_b):
+            if (i == j and action_a == action_b) or is_global_end(timing_a) or is_global_end(timing_b) or (i != j and timing_a == timing_b):
                 continue
             time_of_a = encode_timing(action_a, timing_a, i)
             time_of_b = encode_timing(action_b, timing_b, j)
@@ -559,24 +559,26 @@ class BaseEncoder(ABC):
                 b_a = self.mgr.LT(self.mgr.Minus(time_of_b, time_of_a), eps)
                 same_timing = self.mgr.And(a_b, b_a)
 
-            mutex_cond = self.mgr.TRUE()
+            mutex_cond_list = []
             for (f1, f2) in mutex_conds:
-                mutex_cond = self.mgr.And([self.mgr.EqualsOrIff(self.to_smt(f1c, i, i, action_a), self.to_smt(f2c, j, j, action_b)) for f1c, f2c in zip(f1.args, f2.args)])
+                mutex_cond_list.append(self.mgr.And([self.mgr.EqualsOrIff(self.to_smt(f1c, i, i, action_a), self.to_smt(f2c, j, j, action_b)) for f1c, f2c in zip(f1.args, f2.args)]))
+            if len(mutex_cond_list) == 0:
+                mutex_cond_list.append(self.mgr.TRUE())
 
             if action_a is None:
                 assert action_b is not None
                 # a is a tils, b is an action
                 b_j = self.a(action_b, j)
-                res.append(self.mgr.Not(self.mgr.And(b_j, same_timing, mutex_cond)))
+                res.append(self.mgr.Not(self.mgr.And(b_j, same_timing, self.mgr.Or(mutex_cond_list))))
             else:
                 a_i = self.a(action_a, i)
                 if action_b is None:
                     # a is an action, b is a tils
-                    res.append(self.mgr.Not(self.mgr.And(a_i, same_timing, mutex_cond)))
+                    res.append(self.mgr.Not(self.mgr.And(a_i, same_timing, self.mgr.Or(mutex_cond_list))))
                 else:
                     # both are actions
                     b_j = self.a(action_b, j)
-                    res.append(self.mgr.Not(self.mgr.And(a_i, b_j, same_timing, mutex_cond)))
+                    res.append(self.mgr.Not(self.mgr.And(a_i, b_j, same_timing, self.mgr.Or(mutex_cond_list))))
 
         return self.mgr.And(res)
 
