@@ -1,1 +1,1 @@
-pysmt
+git+https://github.com/pysmt/pysmt.git@optimization

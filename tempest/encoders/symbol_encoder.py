@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import pysmt
 import pysmt.environment
@@ -7,7 +7,7 @@ from unified_planning.model import Action, DurativeAction, Effect, Fluent, FNode
 
 
 class SymbolEncoder:
-    def __init__(self, objects: List[Object], pysmt_env: pysmt.environment.Environment):
+    def __init__(self, objects: Dict[Object, int], pysmt_env: pysmt.environment.Environment):
         assert pysmt_env is not None
         self.pysmt_env = pysmt_env
         self.mgr = self.pysmt_env.formula_manager
@@ -46,7 +46,7 @@ class SymbolEncoder:
     @lru_cache(maxsize=None)
     def fluent(self, fluent: Fluent, args: List[FNode], i: int):
         smt_type, lb, ub = self.type_to_smt(fluent.type)
-        args_str = f"_{'_'.join([str(a) for a in args])}"
+        args_str = f"_{'_'.join([str(a) for a in args])}" if args else ""
         res = self.mgr.Symbol(f"fluent_{fluent.name}{args_str}@{i}", smt_type)
         self.add_type_constraints(res, fluent.type, lb, ub, i)
         return res

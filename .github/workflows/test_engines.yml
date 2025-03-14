@@ -3,52 +3,121 @@ name: CI-on-push
 on:
   push
 
-jobs:
-  test-tempest:
-    uses: ./.github/workflows/test_specific_engine.yml
+env:
+  unified_planning_commit: "535d3cb353836d73a16549af1048f8bd6f714217"
 
+jobs:
+  set-commit:
+    runs-on: ubuntu-latest
+    outputs:
+      unified_planning_commit: ${{ steps.set_commit.outputs.commit }}
+    steps:
+      - name: Set unified_planning_commit
+        id: set_commit
+        run: echo "commit=$unified_planning_commit" >> $GITHUB_ENV
+
+  unit-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v1
+        with:
+          python-version: "3.10"
+
+      - name: Install Development Python dependencies
+        run: python3 -m pip install -r dev-requirements.txt
+
+      - name: Checkout pysmt-optimization
+        uses: actions/checkout@v2
+        with:
+          repository: pysmt/pysmt
+          path: pysmt
+          ref: optimization
+
+      - name: Install pysmt
+        run: python3 -m pip install pysmt/
+
+      - name: Install msat using pysmt
+        run: pysmt-install --msat --confirm-agreement
+
+      - name: Install optimsat using pysmt
+        run: pysmt-install --optimsat --confirm-agreement
+
+      - name: Install z3 using pysmt
+        run: pysmt-install --z3 --confirm-agreement
+
+      - name: Checkout unified-planning
+        uses: actions/checkout@v2
+        with:
+          repository: aiplan4eu/unified-planning
+          path: unified-planning
+          ref: ${{env.unified_planning_commit}}
+
+      - name: Install unified-planning
+        run: python3 -m pip install unified-planning/
+
+      - name: Install tempest
+        run: python3 -m pip install .
+
+      - name: Run the unit tests
+        run: python3 -m pytest tempest/test
+
+  test-tempest:
+    needs: [unit-test]
+    uses: ./.github/workflows/test_specific_engine.yml
     with:
       engine-name: "tempest"
       engine-class: TempestEngine
+      unified-planning-commit: ${{ needs.set-commit.outputs.unified_planning_commit }}
 
   test-tempest-non-incremental:
+    needs: [unit-test]
     uses: ./.github/workflows/test_specific_engine.yml
-
     with:
       engine-name: "tempest-ni"
       engine-class: TempestNonIncremental
+      unified-planning-commit: ${{ needs.set-commit.outputs.unified_planning_commit }}
 
   test-tempest-optimal:
+    needs: [unit-test]
     uses: ./.github/workflows/test_specific_engine.yml
-
     with:
       engine-name: "tempest-opt"
       engine-class: TempestOptimal
+      unified-planning-commit: ${{ needs.set-commit.outputs.unified_planning_commit }}
 
   test-tempest-optimal-non-incremental:
+    needs: [unit-test]
     uses: ./.github/workflows/test_specific_engine.yml
-
     with:
       engine-name: "tempest-opt-ni"
       engine-class: TempestOptimalNonIncremental
+      unified-planning-commit: ${{ needs.set-commit.outputs.unified_planning_commit }}
 
   test-tempest-optimal-lifted-abstract-step:
+    needs: [unit-test]
     uses: ./.github/workflows/test_specific_engine.yml
-
     with:
       engine-name: "tempest-las"
       engine-class: TempestLiftedAbstractStep
+      unified-planning-commit: ${{ needs.set-commit.outputs.unified_planning_commit }}
 
   test-tempest-optimal-only-omt:
+    needs: [unit-test]
     uses: ./.github/workflows/test_specific_engine.yml
-
     with:
       engine-name: "tempest-oomt"
       engine-class: TempestOnlyOMT
+      unified-planning-commit: ${{ needs.set-commit.outputs.unified_planning_commit }}
 
   test-tempest-optimal-lifted-abstract-step-only-omt:
+    needs: [unit-test]
     uses: ./.github/workflows/test_specific_engine.yml
-
     with:
       engine-name: "tempest-las-oomt"
       engine-class: TempestLiftedAbstractStepOnlyOMT
+      unified-planning-commit: ${{ needs.set-commit.outputs.unified_planning_commit }}

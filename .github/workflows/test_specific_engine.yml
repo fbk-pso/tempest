@@ -9,9 +9,9 @@ on:
       engine-class:
         required: true
         type: string
-
-env:
-  unified_planning_commit: "c0fb5f688c454889814187757641744dde24e5bc"
+      unified-planning-commit:
+        required: true
+        type: string
 
 jobs:
   unified-planning-report:
@@ -45,10 +45,13 @@ jobs:
       - name: Install optimsat using pysmt
         run: pysmt-install --optimsat --confirm-agreement
 
+      - name: Install z3 using pysmt
+        run: pysmt-install --z3 --confirm-agreement
+
       - name: Add the benchmarks folder to the PYTHONPATH
         run: |
           PWD=$(pwd)
-          export PYTHONPATH=$PWD/benckmarks:$PYTHONPATH
+          export PYTHONPATH=$PWD/benchmarks:$PYTHONPATH
           echo "PYTHONPATH=$PYTHONPATH" >> $GITHUB_ENV
 
       - name: Checkout unified-planning
@@ -56,7 +59,7 @@ jobs:
         with:
           repository: aiplan4eu/unified-planning
           path: unified-planning
-          ref: ${{env.unified_planning_commit}}
+          ref: ${{inputs.unified-planning-commit}}
 
       - name: Install unified-planning
         run: python3 -m pip install unified-planning/
@@ -66,4 +69,4 @@ jobs:
           echo -e "[engine ${{inputs.engine-name}}]\nmodule_name: tempest.engine\nclass_name: ${{inputs.engine-class}}" > .up.ini
 
       - name: Run the report
-        run: python3 unified-planning/up_test_cases/report.py ${{inputs.engine-name}} -m oneshot -t 3 -e test_cases -b logistic
+        run: python3 unified-planning/up_test_cases/report.py ${{inputs.engine-name}} -m oneshot -t 3 -e test_cases -b logistic farmland classical:depots parking counter_to_50

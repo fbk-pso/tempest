@@ -4,13 +4,14 @@ import pysmt
 import warnings
 import unified_planning as up
 
+import sys
+
 from unified_planning.model import ProblemKind
 from unified_planning.engines import (
     PlanGenerationResultStatus,
     PlanGenerationResult,
     Credits,
 )
-from unified_planning.engines.results import correct_plan_generation_result
 from unified_planning.plans import TimeTriggeredPlan
 from typing import IO, Callable, Optional
 from tempest.encoders import MonolithicEncoder, IncrementalEncoder
@@ -147,10 +148,7 @@ class TempestEngine(_BaseEngine):
                         plan,
                         self.name,
                     )
-                    if isinstance(plan, TimeTriggeredPlan):
-                        return correct_plan_generation_result(res, problem, None)
-                    else:
-                        return res
+                    return res
                 else:
                     elapsed_time = time() - start_time
                     if output_stream is not None:
@@ -174,11 +172,12 @@ class TempestNonIncremental(TempestEngine):
 
 class TempestOptimal(_BaseEngine):
     """Implementation of the TemPEST Optimal Engine."""
-    def __init__(self, incremental=True, horizon=None, solver_name=None, ground_abstract_step: bool = True, grounder_name: Optional[str] = None, sat_before_opt: bool = True):
+    def __init__(self, incremental=True, horizon=None, solver_name=None, ground_abstract_step: bool = True, grounder_name: Optional[str] = None, sat_before_opt: bool = True, secondary_objective: Optional[str] = "weighted"):
         super().__init__(incremental, horizon, solver_name)
         self.ground_abstract_step = ground_abstract_step
         self.grounder_name = grounder_name
         self.sat_before_opt = sat_before_opt
+        self.secondary_objective = secondary_objective
 
     @property
     def name(self) -> str:
@@ -269,6 +268,10 @@ class TempestOptimal(_BaseEngine):
                 return PlanGenerationResult(
                     PlanGenerationResultStatus.TIMEOUT, None, self.name
                 )
+            if first_sat_step == 0:
+                return PlanGenerationResult(
+                    PlanGenerationResultStatus.UNSOLVABLE_INCOMPLETELY, None, self.name
+                )
         else:
             # Start using OMT from first step
             first_sat_step = 2
@@ -277,11 +280,11 @@ class TempestOptimal(_BaseEngine):
         modify_horizon = lambda x: x
         if self.incremental:
             encoder = IncrementalEncoder(problem, pysmt_env=pysmt_env, epsilon=epsilon, optimal=True,
-                ground_abstract_step=self.ground_abstract_step, grounder_name=self.grounder_name)
+                ground_abstract_step=self.ground_abstract_step, grounder_name=self.grounder_name, secondary_objective=self.secondary_objective)
             modify_horizon = lambda x: x-1
         else:
             encoder = MonolithicEncoder(problem, pysmt_env=pysmt_env, epsilon=epsilon, optimal=True,
-                ground_abstract_step=self.ground_abstract_step, grounder_name=self.grounder_name)
+                ground_abstract_step=self.ground_abstract_step, grounder_name=self.grounder_name, secondary_objective=self.secondary_objective)
 
         h = 2
         with pysmt_env.factory.Optimizer(name=self.solver_name, logic="QF_LRA") as omt:
@@ -307,15 +310,21 @@ class TempestOptimal(_BaseEngine):
                 for a in assumptions:
                     omt.add_assertion(a)
                 if self.incremental:
-                    minimization_goal, extra_constraints = encoder.objective_to_minimize(modify_horizon(h), None)
+                    minimization_goals, extra_constraints = encoder.objective_to_minimize(modify_horizon(h), None)
                 else:
-                    minimization_goal, extra_constraints = encoder.objective_to_minimize(h-1, h)
+                    minimization_goals, extra_constraints = encoder.objective_to_minimize(h-1, h)
                 if extra_constraints is not None:
                     for ec in extra_constraints:
                         omt.add_assertion(ec)
-                optimization_result = omt.optimize(minimization_goal)
+                if self.secondary_objective is None or self.secondary_objective == "weighted":
+                    assert len(minimization_goals) == 1
+                    optimization_result = omt.optimize(minimization_goals[0])
+                elif self.secondary_objective == "lexicographic":
+                    optimization_result = omt.lexicographic_optimize(minimization_goals)
+                else:
+                    raise ValueError(f"Unknown secondary objective {self.secondary_objective}")
                 if optimization_result is not None:
-                    model, makespan = optimization_result
+                    model, cost = optimization_result
                     if self.incremental:
                         uses_abstract_step = model.get_value(encoder.uses_abstact_step(modify_horizon(h), None)).is_true()
                     else:
@@ -323,14 +332,14 @@ class TempestOptimal(_BaseEngine):
                     if uses_abstract_step:
                         elapsed_time = time() - start_time
                         if output_stream is not None:
-                            output_stream.write(f"Makespan with bound {h}: {float(makespan.constant_value())}. Elapsed_time: {elapsed_time:.3f} seconds\n")
+                            output_stream.write(f"Cost with bound {h}: {cost}. Elapsed_time: {elapsed_time:.3f} seconds\n")
                         h += 1
                         if timeout is not None and elapsed_time > timeout:
                             is_in_timeout = True
                             break
                     else:
                         if output_stream is not None:
-                            output_stream.write(f"OPT solution with bound {h}: {float(makespan.constant_value())}. Elapsed_time: {elapsed_time:.3f} seconds\n")
+                            output_stream.write(f"OPT solution with bound {h}: {cost}. Elapsed_time: {elapsed_time:.3f} seconds\n")
                         plan = encoder.extract_plan(model, h)
                         assert plan is not None
                         status = PlanGenerationResultStatus.SOLVED_OPTIMALLY if problem.quality_metrics  else PlanGenerationResultStatus.SOLVED_SATISFICING
@@ -339,10 +348,7 @@ class TempestOptimal(_BaseEngine):
                             plan,
                             self.name,
                         )
-                        if isinstance(plan, TimeTriggeredPlan):
-                            return correct_plan_generation_result(res, problem, None)
-                        else:
-                            return res
+                        return res
 
                 else:
                     # assert formula is None
