@@ -10,7 +10,7 @@ setup(name='tempest',
       url='tamer.fbk.eu',
       packages=['tempest', 'tempest.encoders'],
       python_requires='>=3.7',
-      install_requires=["pysmt"],
+      install_requires=["pysmt @ git+https://github.com/pysmt/pysmt@optimization"],
       license='Free For Educational Use',
       classifiers=[
           'License :: Free For Educational Use'
