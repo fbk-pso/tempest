@@ -1,18 +1,97 @@
-# tempest
+# TemPEST
 
-## tempest configuration parameters
+**TemPEST** (Temporal Planner via Encoding into Satisfiability Testing) is a temporal planner that encodes temporal planning problems into SAT/SMT formulations, using modern SMT/OMT solvers to solve them efficiently.
 
-Tempest has different parameters to configure the behaviour, some parameters are used by all Engines, while the majority of paramers is used only in the Optimal Engines.
+TemPEST supports both **satisficing** and **optimal** temporal planning, with the ability to **minimize makespan** and **action costs**.
 
-The configuration parameters common to all engines are:
+## Requirements
 
-- **incremental**: a bool that determines if the algorithm used is incremental or monolithic. The incremental algorithm uses the incrementality of the solver among all the steps of the algorithm, while monolithic makes totally separated calls to the solver and it avoids caching of information from one call to another
-- **horizon**: a positive integer that imposes an upper bound to the number of steps in the final plan. When set to None there is no limit to the step and the algorithm goes indefinitely, while with a fix horizon the algorithm stops when the step reaches the set horizon.
-- **solver_name**: the name of the solver used by the pysmt solve call. In case of an Optimal Engine it must be the name of a pysmt Optimizer.
+TemPEST relies on [PySMT](https://github.com/pysmt/pysmt) to interface with SMT/OMT solvers. You must install PySMT and at least one solver (e.g., Z3):
 
-The configuration parameters specific to optimal engines are:
+```bash
+pip install pysmt
+pysmt-install --z3
+```
 
-- **ground_abstract_step**: a bool that determines if the abstract step is grounded or lifted. When grounded the actions are instantiated on the objects, so more actions are created.
-- **grounder_name**: a str representing the grounded installed in the unified_planning library that is used to ground the abstract step. When None the default in the preference list of the unified planning is used.
-- **sat_before_opt**: a bool that determines if the optimal algorithm tries sat steps (which are faster) until it reaches a step that is sat before trying to find the optimal plan. When False the algorithm uses optimality at every step.
-- **secondary objective**: a str with two possible values or None. When set to None there is no secondary objective to minimize, when set to *weighted* or *lexicographic* the algorithm minimizes the number of steps necessary to find the optimal plan.
+## Installation
+
+TemPEST is not currently available on PyPI and must be installed from source.
+
+```bash
+git clone https://github.com/your_org/tempest.git
+cd tempest
+pip install -e .
+```
+
+## Usage
+
+TemPEST is fully integrated with the [Unified Planning](https://github.com/aiplan4eu/unified-planning) framework. You must register the planner engines with the Unified Planning environment:
+
+```python
+from unified_planning.shortcuts import *
+
+# Register TemPEST engines
+env = get_environment()
+env.factory.add_engine("tempest", "tempest.engine", "TempestEngine")
+env.factory.add_engine("tempest-opt", "tempest.engine", "TempestOptimal")
+
+# Define your temporal planning problem
+problem = ...
+
+# Solve with TemPEST
+with OneshotPlanner(name="tempest", params={'incremental': False}) as planner:
+    result = planner.solve(problem)
+    print(result.plan)
+```
+
+## Parameters
+
+TemPEST has different parameters to configure its behavior. Some parameters are used by all engines, while most are specific to the optimal engines.
+
+### Common to All Engines
+
+- **`incremental`** (`bool`):
+  Use incremental solver calls, reusing solver state across planning steps.
+  `True` enables incremental solving; `False` makes separate, independent calls.
+
+- **`horizon`** (`int | None`):
+  Maximum number of steps in the final plan.
+  If `None`, the search continues indefinitely.
+
+- **`solver_name`** (`str`):
+  The name of the SMT or OMT solver used by PySMT (e.g., `"z3"` or `"optimathsat"`).
+
+### Specific to Optimal Engines
+
+- **`ground_abstract_step`** (`bool`):
+  Whether the abstract step is grounded (i.e., fully instantiated on objects).
+  This typically increases the number of actions.
+
+- **`grounder_name`** (`str | None`):
+  The name of the grounder used from the `unified_planning` library.
+  If `None`, the default grounder is selected.
+
+- **`sat_before_opt`** (`bool`):
+  Try satisficing steps before attempting optimization.
+  `True` makes the planner search for feasible (SAT) plans before optimizing.
+
+- **`secondary_objective`** (`str | None`):
+  Guides the optimization beyond the main objective.
+  Accepted values: `"weighted"`, `"lexicographic"`, or `None`.
+
+## References
+
+TemPEST is based on the following research papers:
+
+- Panjkovic, S., & Micheli, A. (2024). *Abstract action scheduling for optimal temporal planning via OMT.* **AAAI 2024**
+
+- Panjkovic, S., & Micheli, A. (2023). *Expressive optimal temporal planning via optimization modulo theory.* **AAAI 2023**
+
+## License
+
+TemPEST is released under the GNU Lesser General Public License v3.0 (LGPL-3.0).
+See the `LICENSE` file for full details.
+
+## Contact
+
+For questions, bug reports, or contributions, please open an issue on GitHub or contact the authors.
