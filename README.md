@@ -9,7 +9,7 @@ TemPEST supports both **satisficing** and **optimal** temporal planning, with th
 TemPEST relies on [PySMT](https://github.com/pysmt/pysmt) to interface with SMT/OMT solvers. You must install PySMT and at least one solver (e.g., Z3):
 
 ```bash
-pip install pysmt
+pip3 install git+https://github.com/pysmt/pysmt.git@optimization
 pysmt-install --z3
 ```
 
@@ -18,9 +18,7 @@ pysmt-install --z3
 TemPEST is not currently available on PyPI and must be installed from source.
 
 ```bash
-git clone https://github.com/your_org/tempest.git
-cd tempest
-pip install -e .
+pip3 install git+https://github.com/fbk-pso/tempest.git
 ```
 
 ## Usage
