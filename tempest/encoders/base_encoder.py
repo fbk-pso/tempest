@@ -54,6 +54,7 @@ class BaseEncoder(ABC):
     def __init__(self, problem: Problem, pysmt_env: pysmt.environment.Environment, epsilon: Optional[Fraction] = None, optimal: bool = False,
                  ground_abstract_step: bool = True, grounder_name: Optional[str] = None, secondary_objective: Optional[str] = "weighted"):
         self.problem = problem
+        self.actions = self._valid_actions(problem)
         self.epsilon = epsilon
         self.simplifier = Simplifier(problem.environment, problem)
         self.param_getter = AnyGetter(lambda x: x.is_parameter_exp())
@@ -75,7 +76,7 @@ class BaseEncoder(ABC):
                 warnings.warn("There are no grounders for this problem so the ground_abstract_step is disabled in this solve call", UserWarning)
                 self.ground_abstract_step = False
 
-        self.abstract_step_actions = grounded_problem.actions
+        self.abstract_step_actions = grounded_problem.actions if self.ground_abstract_step else self.actions
         self.abstract_step_metrics = grounded_problem.quality_metrics
         self.fluent_mod_var: Dict[Any, Any] = {}
 
@@ -100,6 +101,31 @@ class BaseEncoder(ABC):
             self.abstract_step_touchers = self._get_touchers(grounded_problem)
 
         self._mutex_couples = self._get_mutex_couples()
+
+    def _valid_actions(self, problem: Problem) -> List[Action]:
+        valid_actions = []
+        objects_cache = {}
+        for action in problem.actions:
+            valid_action = True
+            for ut_parameter in filter(lambda t: t.type.is_user_type(), action.parameters):
+
+                objects = objects_cache.get(ut_parameter.type, None)
+                if objects is None:
+                    objects = list(problem.objects(ut_parameter.type))
+                    objects_cache[ut_parameter.type] = objects
+
+                if not objects:
+                    valid_action = False
+                    break
+
+            if valid_action:
+                valid_actions.append(action)
+            else:
+                warnings.warn(
+                    f"Action {action.name} is not valid because it has parameters of user types with no objects of that type",
+                    UserWarning
+                )
+        return valid_actions
 
     def converter(self, i: int, w: Optional[int], scope: Optional[Action]):
         key = (None, i, w) if scope is None else (scope.name, i, w)
@@ -400,7 +426,7 @@ class BaseEncoder(ABC):
 
     def encode_non_self_overlapping(self, i: int):
         res = []
-        for act in self.problem.actions:
+        for act in self.actions:
             if not isinstance(act, DurativeAction):
                 continue
             a_i = self.a(act, i)
@@ -434,7 +460,7 @@ class BaseEncoder(ABC):
         res = []
         for i in range(1, h):
             t = model.get_py_value(self.t(i))
-            for a in self.problem.actions:
+            for a in self.actions:
                 if model.get_py_value(self.a(a, i)):
                     d = (
                         model.get_py_value(self.dur(a, i))
@@ -470,7 +496,7 @@ class BaseEncoder(ABC):
         start_timing = StartTiming()
         global_end_timing = GlobalEndTiming()
 
-        for act in self.problem.actions:
+        for act in self.actions:
             if isinstance(act, InstantaneousAction):
                 events.add((act, start_timing, frozenset(act.preconditions), frozenset(act.effects)))
             else:
@@ -685,7 +711,7 @@ class BaseEncoder(ABC):
 
         # Handles Durative Actions that started in a concrete step but still have to end
         # in the abstract step
-        for a in filter(lambda a: isinstance(a, DurativeAction), self.problem.actions):
+        for a in filter(lambda a: isinstance(a, DurativeAction), self.actions):
             for s in range(1, h):
                 sub_res = []
                 for interval, cl in a.conditions.items():
@@ -743,7 +769,7 @@ class BaseEncoder(ABC):
         for t in self.problem.timed_effects.keys():
             sub_res.append(self.mgr.Equals(self.encode_problem_tp(t, i), t_i))
 
-        for act in self.problem.actions:
+        for act in self.actions:
             sub_res.append(self.a(act, i))
             if isinstance(act, DurativeAction):
                 for s in range(1, i):
@@ -767,7 +793,7 @@ class BaseEncoder(ABC):
         for t in self.problem.timed_effects.keys():
             res.append(self.mgr.LE(self.encode_problem_tp(t, h), last_concrete_step_time))
 
-        for act in self.problem.actions:
+        for act in self.actions:
             if isinstance(act, DurativeAction):
                 for j in range(1, i+1):
                     a_j = self.a(act, j)
@@ -875,7 +901,7 @@ class BaseEncoder(ABC):
         if metric is None or metric.is_minimize_makespan():
             makespan = self.mgr.FreshSymbol(pysmt.typing.REAL, "makespan%d")
             terms = [self.mgr.GE(makespan, self.t(i))]
-            for act in self.problem.actions:
+            for act in self.actions:
                 if isinstance(act, DurativeAction):
                     for j in range(1, i+1):
                         terms.append(self.mgr.GE(makespan, self.mgr.Plus(self.t(j), self.dur(act, j))))
@@ -917,7 +943,7 @@ class BaseEncoder(ABC):
         max_smt_goal = MaxSMTGoal()
         costs = []
         range_lim = h if self.ground_abstract_step else h+1
-        for a in self.problem.actions:
+        for a in self.actions:
             for assignments, cost in self._get_action_costs(metric, a):
                 weight = cost.constant_value()
                 for i in range(range_lim):

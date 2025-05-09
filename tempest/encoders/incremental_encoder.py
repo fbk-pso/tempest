@@ -256,7 +256,7 @@ class IncrementalEncoder(BaseEncoder):
                 )
 
         # Actions
-        for a in self.problem.actions:
+        for a in self.actions:
             if isinstance(a, InstantaneousAction):
                 res.append(self.encode_instantaneous_action(a, i))
             elif isinstance(a, DurativeAction):
