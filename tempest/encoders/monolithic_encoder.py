@@ -165,7 +165,7 @@ class MonolithicEncoder(BaseEncoder):
         for i in range(1, h):
 
             # Encode actions
-            for a in self.problem.actions:
+            for a in self.actions:
                 if isinstance(a, InstantaneousAction):
                     res.append(self.encode_instantaneous_action(a, i))
                 elif isinstance(a, DurativeAction):

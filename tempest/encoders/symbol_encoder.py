@@ -95,12 +95,13 @@ class SymbolEncoder:
             lb, ub = type.lower_bound, type.upper_bound
             return pysmt.typing.REAL, lb, ub
         elif type.is_user_type():
-            lb = None
+            lb, ub = None, None
             for obj, i in self.objects.items():
                 if obj.type == type:
                     if lb is None:
                         lb = i
                     ub = i
+            assert lb is not None and ub is not None
             return pysmt.typing.REAL, lb, ub
         else:
             raise NotImplementedError(f"Unknown type in conversion: {type}")
