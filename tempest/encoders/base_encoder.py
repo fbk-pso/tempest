@@ -121,10 +121,7 @@ class BaseEncoder(ABC):
             if valid_action:
                 valid_actions.append(action)
             else:
-                warnings.warn(
-                    f"Action {action.name} is not valid because it has parameters of user types with no objects of that type",
-                    UserWarning
-                )
+                warnings.warn(f"No grounded action found for {action.name}", UserWarning)
         return valid_actions
 
     def converter(self, i: int, w: Optional[int], scope: Optional[Action]):
