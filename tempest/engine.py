@@ -29,7 +29,7 @@ from unified_planning.engines import (
     PlanGenerationResult,
     Credits,
 )
-from typing import IO, Callable, Optional
+from typing import IO, Callable, Iterator, Optional
 from tempest.encoders import MonolithicEncoder, IncrementalEncoder
 
 
@@ -102,7 +102,7 @@ class _BaseEngine(up.engines.Engine, up.engines.mixins.OneshotPlannerMixin):
         return credits
 
 
-class TempestEngine(_BaseEngine):
+class TempestEngine(_BaseEngine, up.engines.mixins.AnytimePlannerMixin):
     """Implementation of the TemPEST Engine."""
 
     @property
@@ -136,6 +136,18 @@ class TempestEngine(_BaseEngine):
         if heuristic is not None:
             warnings.warn("TemPEST does not support custom heuristics.", UserWarning)
 
+        return next(self._get_solutions_with_params(problem, timeout, output_stream))
+
+    def _get_solutions_with_params(
+        self,
+        problem: "up.model.AbstractProblem",
+        timeout: Optional[float] = None,
+        output_stream: Optional[IO[str]] = None,
+        warm_start_plan: Optional["up.plans.Plan"] = None,
+        **kwargs,
+    ) -> Iterator["up.engines.results.PlanGenerationResult"]:
+        assert isinstance(problem, up.model.Problem)
+
         pysmt_env = pysmt.environment.Environment()
 
         modify_horizon = lambda x: x
@@ -147,6 +159,7 @@ class TempestEngine(_BaseEngine):
 
         start_time = time()
         is_in_timeout: bool = False
+        plan_found = False
 
         with pysmt_env.factory.Solver(name=self.solver_name, logic="QF_LRA") as smt:
             step_zero = encoder.encode_step_zero()
@@ -157,28 +170,52 @@ class TempestEngine(_BaseEngine):
                 formula, assumptions = encoder.encode_step(modify_horizon(h))
                 if formula is not None:
                     smt.add_assertion(formula)
-                if smt.solve(assumptions):
-                    plan = encoder.extract_plan(smt.get_model(), h)
+                while smt.solve(assumptions):
+                    model = smt.get_model()
+                    plan = encoder.extract_plan(model, h)
                     res = PlanGenerationResult(
                         PlanGenerationResultStatus.SOLVED_SATISFICING,
                         plan,
                         self.name,
                     )
-                    return res
-                else:
+                    yield res
+                    plan_found = True
                     elapsed_time = time() - start_time
-                    if output_stream is not None:
-                        output_stream.write(f"No solution with bound {h}. Elapsed_time: {elapsed_time:.3f} seconds\n")
-                    h += 1
                     if timeout is not None and elapsed_time > timeout:
                         is_in_timeout = True
                         break
+                    l = []
+                    for i in range(1, h):
+                        for a in problem.actions:
+                            if model.get_py_value(encoder.a(a, i)):
+                                l.append(encoder.a(a, i))
+                                for p in a.parameters:
+                                    pv = model.get_py_value(encoder.symenc.parameter(a, p, i))
+                                    l.append(encoder.mgr.EqualsOrIff(encoder.symenc.parameter(a, p, i), encoder.mgr.Real(pv)))
+                            else:
+                                l.append(encoder.mgr.Not(encoder.a(a, i)))
+                    smt.add_assertion(encoder.mgr.Not(encoder.mgr.And(l)))
+                if is_in_timeout:
+                    break
+                elapsed_time = time() - start_time
+                if output_stream is not None:
+                    output_stream.write(f"No solution with bound {h}. Elapsed_time: {elapsed_time:.3f} seconds\n")
+                if timeout is not None and elapsed_time > timeout:
+                    is_in_timeout = True
+                    break
+                h += 1
 
-        status = PlanGenerationResultStatus.TIMEOUT if is_in_timeout else PlanGenerationResultStatus.UNSOLVABLE_INCOMPLETELY
+        if not plan_found:
+            status = PlanGenerationResultStatus.TIMEOUT if is_in_timeout else PlanGenerationResultStatus.UNSOLVABLE_INCOMPLETELY
+            yield PlanGenerationResult(status, None, self.name)
 
-        return PlanGenerationResult(
-            status, None, self.name
-        )
+    def _get_solutions(
+        self,
+        problem: "up.model.AbstractProblem",
+        timeout: Optional[float] = None,
+        output_stream: Optional[IO[str]] = None,
+    ) -> Iterator["up.engines.results.PlanGenerationResult"]:
+        return self._get_solutions_with_params(problem, timeout, output_stream)
 
 
 class TempestNonIncremental(TempestEngine):
