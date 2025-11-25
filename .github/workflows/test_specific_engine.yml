@@ -26,15 +26,8 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: Checkout pysmt-optimization
-        uses: actions/checkout@v2
-        with:
-          repository: pysmt/pysmt
-          path: pysmt
-          ref: optimization
-
-      - name: Install pysmt
-        run: python3 -m pip install pysmt/
+      - name: Install Python dependencies
+        run: python3 -m pip install -r requirements.txt
 
       - name: Install tempest
         run: python3 -m pip install .
