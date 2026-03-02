@@ -26,6 +26,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install setuptools
+        run: python3 -m pip install setuptools
+
       - name: Install Python dependencies
         run: python3 -m pip install -r requirements.txt
 
