@@ -26,7 +26,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v1
         with:
-          python-version: "3.10"
+          python-version: "3.12"
 
       - name: Install Development Python dependencies
         run: python3 -m pip install -r dev-requirements.txt
