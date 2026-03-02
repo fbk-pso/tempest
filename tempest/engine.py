@@ -37,10 +37,10 @@ credits = Credits(
     "TemPEST",
     "FBK PSO Unit",
     "tamer@fbk.eu",
-    "https://tamer.fbk.eu",
-    "Free for Educational Use",
+    "https://github.com/fbk-pso/tempest",
+    "LGPLv3",
     "Temporal Planning Encoding into Satisfiability Testing",
-    "Temporal Planning Encoding into Satisfiability Testing",
+    "Temporal Planner that encodes temporal planning problems into SAT/SMT formulations",
 )
 
 
