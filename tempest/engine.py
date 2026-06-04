@@ -18,10 +18,9 @@
 from fractions import Fraction
 from time import time
 import pysmt
+import pysmt.environment
 import warnings
 import unified_planning as up
-
-import sys
 
 from unified_planning.model import ProblemKind
 from unified_planning.engines import (

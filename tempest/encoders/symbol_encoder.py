@@ -19,6 +19,7 @@ from functools import lru_cache
 from typing import Dict, List, Optional
 
 import pysmt
+import pysmt.typing
 import pysmt.environment
 from unified_planning.model import Action, DurativeAction, Effect, Fluent, FNode, Object, Parameter, Type
 

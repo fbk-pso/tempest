@@ -22,6 +22,9 @@ from functools import lru_cache
 from abc import ABC, abstractmethod
 import warnings
 import pysmt
+import pysmt.typing
+import pysmt.environment
+import pysmt.solvers.solver
 from pysmt.optimization.goal import MaxSMTGoal, MinimizationGoal
 
 import unified_planning as up
