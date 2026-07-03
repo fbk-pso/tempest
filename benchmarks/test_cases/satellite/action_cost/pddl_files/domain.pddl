@@ -2,7 +2,7 @@
 (define (domain satellite)
   (:requirements :strips :equality :typing :durative-actions)
 (:types satellite direction instrument mode)
- (:predicates 
+ (:predicates
                (on_board ?i - instrument ?s - satellite)
 	       (supports ?i - instrument ?m - mode)
 	       (pointing ?s - satellite ?d - direction)
@@ -11,7 +11,7 @@
 	       (calibrated ?i - instrument)
 	       (have_image ?d - direction ?m - mode)
 	       (calibration_target ?i - instrument ?d - direction))
- 
+
  (:functions (total-cost))
 
 
@@ -27,26 +27,26 @@
            )
   )
 
- 
+
   (:durative-action switch_on
    :parameters (?i - instrument ?s - satellite)
    :duration (= ?duration 2)
-   :condition (and (over all (on_board ?i ?s)) 
+   :condition (and (over all (on_board ?i ?s))
                       (at start (power_avail ?s)))
    :effect (and (at end (power_on ?i))
                 (at start (not (calibrated ?i)))
                 (at start (not (power_avail ?s)))
                 (at end (increase (total-cost) 2))
            )
-          
+
   )
 
- 
+
   (:durative-action switch_off
    :parameters (?i - instrument ?s - satellite)
    :duration (= ?duration 1)
    :condition (and (over all (on_board ?i ?s))
-                      (at start (power_on ?i)) 
+                      (at start (power_on ?i))
                   )
    :effect (and (at start (not (power_on ?i)))
                 (at end (power_avail ?s))

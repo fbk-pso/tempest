@@ -1,10 +1,10 @@
 (define (problem instance)
  (:domain matchcellar)
- (:objects 
+ (:objects
     match0 - match
     fuse0 - fuse
 )
- (:init 
+ (:init
   (handfree)
   (unused match0)
   (= (total-cost) 0)

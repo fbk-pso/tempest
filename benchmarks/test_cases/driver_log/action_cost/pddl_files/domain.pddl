@@ -1,5 +1,5 @@
 (define (domain driverlog)
-  (:requirements :typing :durative-actions) 
+  (:requirements :typing :durative-actions)
   (:types location driver truck obj)
 
   (:predicates
@@ -20,7 +20,7 @@
     ?loc - location)
   :duration (= ?duration 2)
   :condition
-   (and 
+   (and
    (over all (at_truck ?truck ?loc)) (at start (at_obj ?obj ?loc)))
   :effect
    (and (at start (not (at_obj ?obj ?loc))) (at end (in ?obj ?truck))
@@ -46,11 +46,11 @@
     ?loc - location)
   :duration (= ?duration 1)
   :condition
-   (and 
-   (over all (at_truck ?truck ?loc)) (at start (at_driver ?driver ?loc)) 
+   (and
+   (over all (at_truck ?truck ?loc)) (at start (at_driver ?driver ?loc))
 	(at start (empty ?truck)))
   :effect
-   (and (at start (not (at_driver ?driver ?loc))) 
+   (and (at start (not (at_driver ?driver ?loc)))
 	(at end (driving ?driver ?truck)) (at start (not (empty ?truck)))
   (at end (increase (total-cost) 1))))
 
@@ -63,7 +63,7 @@
   :condition
    (and (over all (at_truck ?truck ?loc)) (at start (driving ?driver ?truck)))
   :effect
-   (and (at start (not (driving ?driver ?truck))) 
+   (and (at start (not (driving ?driver ?truck)))
 	(at end (at_driver ?driver ?loc)) (at end (empty ?truck))
   (at end (increase (total-cost) 1))))
 
@@ -78,7 +78,7 @@
    (and (at start (at_truck ?truck ?loc-from))
    (over all (driving ?driver ?truck)) (at start (link ?loc-from ?loc-to)))
   :effect
-   (and (at start (not (at_truck ?truck ?loc-from))) 
+   (and (at start (not (at_truck ?truck ?loc-from)))
 	(at end (at_truck ?truck ?loc-to))
   (at end (increase (total-cost) 10))))
 
@@ -89,11 +89,11 @@
     ?loc-to - location)
   :duration (= ?duration 20)
   :condition
-   (and (at start (at_driver ?driver ?loc-from)) 
+   (and (at start (at_driver ?driver ?loc-from))
 	(at start (path ?loc-from ?loc-to)))
   :effect
    (and (at start (not (at_driver ?driver ?loc-from)))
 	(at end (at_driver ?driver ?loc-to))
   (at end (increase (total-cost) 20))))
- 
+
 )

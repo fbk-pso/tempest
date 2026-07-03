@@ -1,11 +1,11 @@
 (define (problem instance)
  (:domain floor-tile)
- (:objects tile_0-1 tile_0-2 
+ (:objects tile_0-1 tile_0-2
            tile_1-1 tile_1-2 - tile
            robot1 - robot
            white black - color
 )
- (:init 
+ (:init
    (robot-at robot1 tile_0-1)
    (robot-has robot1 white)
    (available-color white)
