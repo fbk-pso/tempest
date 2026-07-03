@@ -1,0 +1,44 @@
+version: 2
+updates:
+  # Python deps from pyproject.toml / uv.lock. Watches both PyPI versions and
+  # git-source dependencies (e.g., unified-planning tracks the upstream main
+  # branch — Dependabot opens a PR whenever new commits land there).
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Europe/Rome
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "python"
+    ignore:
+      # z3-solver is pinned to the version pysmt supports (pysmt/cmd/install.py).
+      # Bump it manually to match when pysmt updates, not on z3's own cadence.
+      - dependency-name: "z3-solver"
+
+  # Pinned action versions in .github/workflows/. Batched into a single PR per
+  # week to cut review noise.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Europe/Rome
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "ci"
+    groups:
+      actions:
+        patterns:
+          - "*"

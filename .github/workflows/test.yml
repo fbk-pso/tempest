@@ -1,0 +1,71 @@
+name: test
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        required: true
+        type: string
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install just
+        uses: extractions/setup-just@v4
+        with:
+          just-version: "1.51.0"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Sync environment
+        run: uv sync --frozen
+
+      - name: pre-commit
+        run: just precommit
+
+      - name: mypy
+        run: just typecheck
+
+  test:
+    needs: [lint]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install just
+        uses: extractions/setup-just@v4
+        with:
+          just-version: "1.51.0"
+
+      - name: Set up Python
+        run: uv python install ${{ inputs.python-version }}
+
+      - name: Sync environment
+        run: uv sync --frozen --python ${{ inputs.python-version }}
+
+      - name: Install OptiMathSAT
+        # z3 is a mandatory dependency (installed by uv sync above). OptiMathSAT
+        # is not pip-installable: pysmt-install compiles it, needing setuptools
+        # only at build time, so pull it in transiently instead of tracking it.
+        run: uv run --with setuptools pysmt-install --optimsat --confirm-agreement
+
+      - name: Run the test suite
+        run: just test
