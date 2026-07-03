@@ -2,42 +2,43 @@
 # This file is part of TemPEST.
 #
 # TemPEST is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Lesser General Public License as published by
+# it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
 # TemPEST is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-# GNU Lesser General Public License for more details.
+# GNU General Public License for more details.
 #
-# You should have received a copy of the GNU Lesser General Public License
+# You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 
+import warnings
 from fractions import Fraction
 from time import time
+from typing import IO, Callable, Iterator, Optional
+
 import pysmt
 import pysmt.environment
-import warnings
 import unified_planning as up
-
-from unified_planning.model import ProblemKind
 from unified_planning.engines import (
-    PlanGenerationResultStatus,
-    PlanGenerationResult,
     Credits,
+    PlanGenerationResult,
+    PlanGenerationResultStatus,
 )
-from typing import IO, Callable, Iterator, Optional
-from tempest.encoders import MonolithicEncoder, IncrementalEncoder
+from unified_planning.model import ProblemKind
 
+from tempest.encoders import IncrementalEncoder, MonolithicEncoder
+from tempest.encoders.base_encoder import BaseEncoder
 
 credits = Credits(
     "TemPEST",
     "FBK PSO Unit",
-    "tamer@fbk.eu",
+    "pso-tools@fbk.eu",
     "https://github.com/fbk-pso/tempest",
-    "LGPLv3",
+    "GPLv3",
     "Temporal Planning Encoding into Satisfiability Testing",
     "Temporal Planner that encodes temporal planning problems into SAT/SMT formulations",
 )
@@ -149,10 +150,14 @@ class TempestEngine(_BaseEngine, up.engines.mixins.AnytimePlannerMixin):
 
         modify_horizon = lambda x: x
         if self.incremental:
-            encoder = IncrementalEncoder(problem, pysmt_env=pysmt_env, epsilon=problem.epsilon)
-            modify_horizon = lambda x: x-1
+            encoder: BaseEncoder = IncrementalEncoder(
+                problem, pysmt_env=pysmt_env, epsilon=problem.epsilon
+            )
+            modify_horizon = lambda x: x - 1
         else:
-            encoder = MonolithicEncoder(problem, pysmt_env=pysmt_env, epsilon=problem.epsilon)
+            encoder = MonolithicEncoder(
+                problem, pysmt_env=pysmt_env, epsilon=problem.epsilon
+            )
 
         start_time = time()
         is_in_timeout: bool = False
@@ -181,29 +186,42 @@ class TempestEngine(_BaseEngine, up.engines.mixins.AnytimePlannerMixin):
                     if timeout is not None and elapsed_time > timeout:
                         is_in_timeout = True
                         break
-                    l = []
+                    terms = []
                     for i in range(1, h):
                         for a in problem.actions:
                             if model.get_py_value(encoder.a(a, i)):
-                                l.append(encoder.a(a, i))
+                                terms.append(encoder.a(a, i))
                                 for p in a.parameters:
-                                    pv = model.get_py_value(encoder.symenc.parameter(a, p, i))
-                                    l.append(encoder.mgr.EqualsOrIff(encoder.symenc.parameter(a, p, i), encoder.mgr.Real(pv)))
+                                    pv = model.get_py_value(
+                                        encoder.symenc.parameter(a, p, i)
+                                    )
+                                    terms.append(
+                                        encoder.mgr.EqualsOrIff(
+                                            encoder.symenc.parameter(a, p, i),
+                                            encoder.mgr.Real(pv),
+                                        )
+                                    )
                             else:
-                                l.append(encoder.mgr.Not(encoder.a(a, i)))
-                    smt.add_assertion(encoder.mgr.Not(encoder.mgr.And(l)))
+                                terms.append(encoder.mgr.Not(encoder.a(a, i)))
+                    smt.add_assertion(encoder.mgr.Not(encoder.mgr.And(terms)))
                 if is_in_timeout:
                     break
                 elapsed_time = time() - start_time
                 if output_stream is not None:
-                    output_stream.write(f"No solution with bound {h}. Elapsed_time: {elapsed_time:.3f} seconds\n")
+                    output_stream.write(
+                        f"No solution with bound {h}. Elapsed_time: {elapsed_time:.3f} seconds\n"
+                    )
                 if timeout is not None and elapsed_time > timeout:
                     is_in_timeout = True
                     break
                 h += 1
 
         if not plan_found:
-            status = PlanGenerationResultStatus.TIMEOUT if is_in_timeout else PlanGenerationResultStatus.UNSOLVABLE_INCOMPLETELY
+            status = (
+                PlanGenerationResultStatus.TIMEOUT
+                if is_in_timeout
+                else PlanGenerationResultStatus.UNSOLVABLE_INCOMPLETELY
+            )
             yield PlanGenerationResult(status, None, self.name)
 
     def _get_solutions(
@@ -222,7 +240,17 @@ class TempestNonIncremental(TempestEngine):
 
 class TempestOptimal(_BaseEngine):
     """Implementation of the TemPEST Optimal Engine."""
-    def __init__(self, incremental=True, horizon=None, solver_name=None, ground_abstract_step: bool = True, grounder_name: Optional[str] = None, sat_before_opt: bool = True, secondary_objective: Optional[str] = "weighted"):
+
+    def __init__(
+        self,
+        incremental=True,
+        horizon=None,
+        solver_name=None,
+        ground_abstract_step: bool = True,
+        grounder_name: Optional[str] = None,
+        sat_before_opt: bool = True,
+        secondary_objective: Optional[str] = "weighted",
+    ):
         super().__init__(incremental, horizon, solver_name)
         self.ground_abstract_step = ground_abstract_step
         self.grounder_name = grounder_name
@@ -283,10 +311,14 @@ class TempestOptimal(_BaseEngine):
 
             modify_horizon = lambda x: x
             if self.incremental:
-                encoder = IncrementalEncoder(problem, pysmt_env=pysmt_env, epsilon=epsilon)
-                modify_horizon = lambda x: x-1
+                encoder: BaseEncoder = IncrementalEncoder(
+                    problem, pysmt_env=pysmt_env, epsilon=epsilon
+                )
+                modify_horizon = lambda x: x - 1
             else:
-                encoder = MonolithicEncoder(problem, pysmt_env=pysmt_env, epsilon=epsilon)
+                encoder = MonolithicEncoder(
+                    problem, pysmt_env=pysmt_env, epsilon=epsilon
+                )
 
             h = 2
             first_sat_step = 0
@@ -302,11 +334,15 @@ class TempestOptimal(_BaseEngine):
                         first_sat_step = h
                         elapsed_time = time() - start_time
                         if output_stream is not None:
-                            output_stream.write(f"SAT solution with bound {h}. Elapsed_time: {elapsed_time:.3f} seconds\n")
+                            output_stream.write(
+                                f"SAT solution with bound {h}. Elapsed_time: {elapsed_time:.3f} seconds\n"
+                            )
                     else:
                         elapsed_time = time() - start_time
                         if output_stream is not None:
-                            output_stream.write(f"No SAT solution with bound {h}. Elapsed_time: {elapsed_time:.3f} seconds\n")
+                            output_stream.write(
+                                f"No SAT solution with bound {h}. Elapsed_time: {elapsed_time:.3f} seconds\n"
+                            )
                         h += 1
                     if timeout is not None and elapsed_time > timeout:
                         is_in_timeout = True
@@ -328,12 +364,26 @@ class TempestOptimal(_BaseEngine):
         # Optimality part
         modify_horizon = lambda x: x
         if self.incremental:
-            encoder = IncrementalEncoder(problem, pysmt_env=pysmt_env, epsilon=epsilon, optimal=True,
-                ground_abstract_step=self.ground_abstract_step, grounder_name=self.grounder_name, secondary_objective=self.secondary_objective)
-            modify_horizon = lambda x: x-1
+            encoder: BaseEncoder = IncrementalEncoder(
+                problem,
+                pysmt_env=pysmt_env,
+                epsilon=epsilon,
+                optimal=True,
+                ground_abstract_step=self.ground_abstract_step,
+                grounder_name=self.grounder_name,
+                secondary_objective=self.secondary_objective,
+            )
+            modify_horizon = lambda x: x - 1
         else:
-            encoder = MonolithicEncoder(problem, pysmt_env=pysmt_env, epsilon=epsilon, optimal=True,
-                ground_abstract_step=self.ground_abstract_step, grounder_name=self.grounder_name, secondary_objective=self.secondary_objective)
+            encoder = MonolithicEncoder(
+                problem,
+                pysmt_env=pysmt_env,
+                epsilon=epsilon,
+                optimal=True,
+                ground_abstract_step=self.ground_abstract_step,
+                grounder_name=self.grounder_name,
+                secondary_objective=self.secondary_objective,
+            )
 
         h = 2
         with pysmt_env.factory.Optimizer(name=self.solver_name, logic="QF_LRA") as omt:
@@ -348,7 +398,7 @@ class TempestOptimal(_BaseEngine):
                         omt.add_assertion(formula)
                     omt.push()
                     h += 1
-            else: # If there is no incrementality, all previous steps can be skipped
+            else:  # If there is no incrementality, all previous steps can be skipped
                 h = first_sat_step
 
             while self.horizon is None or h <= self.horizon:
@@ -359,39 +409,60 @@ class TempestOptimal(_BaseEngine):
                 for a in assumptions:
                     omt.add_assertion(a)
                 if self.incremental:
-                    minimization_goals, extra_constraints = encoder.objective_to_minimize(modify_horizon(h), None)
+                    minimization_goals, extra_constraints = (
+                        encoder.objective_to_minimize(modify_horizon(h), None)
+                    )
                 else:
-                    minimization_goals, extra_constraints = encoder.objective_to_minimize(h-1, h)
+                    minimization_goals, extra_constraints = (
+                        encoder.objective_to_minimize(h - 1, h)
+                    )
                 if extra_constraints is not None:
                     for ec in extra_constraints:
                         omt.add_assertion(ec)
-                if self.secondary_objective is None or self.secondary_objective == "weighted":
+                if (
+                    self.secondary_objective is None
+                    or self.secondary_objective == "weighted"
+                ):
                     assert len(minimization_goals) == 1
                     optimization_result = omt.optimize(minimization_goals[0])
                 elif self.secondary_objective == "lexicographic":
                     optimization_result = omt.lexicographic_optimize(minimization_goals)
                 else:
-                    raise ValueError(f"Unknown secondary objective {self.secondary_objective}")
+                    raise ValueError(
+                        f"Unknown secondary objective {self.secondary_objective}"
+                    )
                 if optimization_result is not None:
                     model, cost = optimization_result
                     if self.incremental:
-                        uses_abstract_step = model.get_value(encoder.uses_abstact_step(modify_horizon(h), None)).is_true()
+                        uses_abstract_step = model.get_value(
+                            encoder.uses_abstact_step(modify_horizon(h), None)
+                        ).is_true()
                     else:
-                        uses_abstract_step = model.get_value(encoder.uses_abstact_step(h-1, h)).is_true()
+                        uses_abstract_step = model.get_value(
+                            encoder.uses_abstact_step(h - 1, h)
+                        ).is_true()
                     if uses_abstract_step:
                         elapsed_time = time() - start_time
                         if output_stream is not None:
-                            output_stream.write(f"Cost with bound {h}: {cost}. Elapsed_time: {elapsed_time:.3f} seconds\n")
+                            output_stream.write(
+                                f"Cost with bound {h}: {cost}. Elapsed_time: {elapsed_time:.3f} seconds\n"
+                            )
                         h += 1
                         if timeout is not None and elapsed_time > timeout:
                             is_in_timeout = True
                             break
                     else:
                         if output_stream is not None:
-                            output_stream.write(f"OPT solution with bound {h}: {cost}. Elapsed_time: {elapsed_time:.3f} seconds\n")
+                            output_stream.write(
+                                f"OPT solution with bound {h}: {cost}. Elapsed_time: {elapsed_time:.3f} seconds\n"
+                            )
                         plan = encoder.extract_plan(model, h)
                         assert plan is not None
-                        status = PlanGenerationResultStatus.SOLVED_OPTIMALLY if problem.quality_metrics  else PlanGenerationResultStatus.SOLVED_SATISFICING
+                        status = (
+                            PlanGenerationResultStatus.SOLVED_OPTIMALLY
+                            if problem.quality_metrics
+                            else PlanGenerationResultStatus.SOLVED_SATISFICING
+                        )
                         res = PlanGenerationResult(
                             status,
                             plan,
@@ -404,27 +475,60 @@ class TempestOptimal(_BaseEngine):
                     break
                 omt.pop()
 
-        status = PlanGenerationResultStatus.TIMEOUT if is_in_timeout else PlanGenerationResultStatus.UNSOLVABLE_INCOMPLETELY
-
-        return PlanGenerationResult(
-            status, None, self.name
+        status = (
+            PlanGenerationResultStatus.TIMEOUT
+            if is_in_timeout
+            else PlanGenerationResultStatus.UNSOLVABLE_INCOMPLETELY
         )
+
+        return PlanGenerationResult(status, None, self.name)
 
 
 class TempestOptimalNonIncremental(TempestOptimal):
     """Implementation of the TemPEST Optimal Engine."""
-    def __init__(self, horizon=None, solver_name=None, ground_abstract_step: bool = True, grounder_name: Optional[str] = None, sat_before_opt: bool = True):
-        super().__init__(False, horizon, solver_name, ground_abstract_step, grounder_name, sat_before_opt)
+
+    def __init__(
+        self,
+        horizon=None,
+        solver_name=None,
+        ground_abstract_step: bool = True,
+        grounder_name: Optional[str] = None,
+        sat_before_opt: bool = True,
+    ):
+        super().__init__(
+            False,
+            horizon,
+            solver_name,
+            ground_abstract_step,
+            grounder_name,
+            sat_before_opt,
+        )
 
 
 class TempestLiftedAbstractStep(TempestOptimal):
-    def __init__(self, incremental=True, horizon=None, solver_name=None, sat_before_opt=True):
+    def __init__(
+        self, incremental=True, horizon=None, solver_name=None, sat_before_opt=True
+    ):
         super().__init__(incremental, horizon, solver_name, False, None, sat_before_opt)
 
 
 class TempestOnlyOMT(TempestOptimal):
-    def __init__(self, incremental=True, horizon=None, solver_name=None, ground_abstract_step=True, grounder_name=None):
-        super().__init__(incremental, horizon, solver_name, ground_abstract_step, grounder_name, False)
+    def __init__(
+        self,
+        incremental=True,
+        horizon=None,
+        solver_name=None,
+        ground_abstract_step=True,
+        grounder_name=None,
+    ):
+        super().__init__(
+            incremental,
+            horizon,
+            solver_name,
+            ground_abstract_step,
+            grounder_name,
+            False,
+        )
 
 
 class TempestLiftedAbstractStepOnlyOMT(TempestOptimal):

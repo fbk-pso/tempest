@@ -2,16 +2,16 @@
 # This file is part of TemPEST.
 #
 # TemPEST is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Lesser General Public License as published by
+# it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
 # TemPEST is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-# GNU Lesser General Public License for more details.
+# GNU General Public License for more details.
 #
-# You should have received a copy of the GNU Lesser General Public License
+# You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 
@@ -19,18 +19,29 @@ from functools import lru_cache
 from typing import Dict, List, Optional
 
 import pysmt
-import pysmt.typing
 import pysmt.environment
-from unified_planning.model import Action, DurativeAction, Effect, Fluent, FNode, Object, Parameter, Type
+import pysmt.typing
+from unified_planning.model import (
+    Action,
+    DurativeAction,
+    Effect,
+    Fluent,
+    FNode,
+    Object,
+    Parameter,
+    Type,
+)
 
 
 class SymbolEncoder:
-    def __init__(self, objects: Dict[Object, int], pysmt_env: pysmt.environment.Environment):
+    def __init__(
+        self, objects: Dict[Object, int], pysmt_env: pysmt.environment.Environment
+    ):
         assert pysmt_env is not None
         self.pysmt_env = pysmt_env
         self.mgr = self.pysmt_env.formula_manager
         self.objects = objects
-        self.type_constraints = {}
+        self.type_constraints: Dict[int, set] = {}
         self.c = 0
 
     @lru_cache(maxsize=None)
@@ -76,13 +87,17 @@ class SymbolEncoder:
         self.add_type_constraints(res, parameter.type, lb, ub, i)
         return res
 
-    def add_type_constraints(self, symbol, type: Type, lb: Optional[int], ub: Optional[int], i: int):
+    def add_type_constraints(
+        self, symbol, type: Type, lb: Optional[int], ub: Optional[int], i: int
+    ):
         self.type_constraints.setdefault(i, set())
         if type.is_user_type():
-            l = []
-            for p in range(lb, ub+1):
-                l.append(self.mgr.Equals(symbol, self.mgr.Real(p)))
-            self.type_constraints[i].add(self.mgr.Or(l))
+            # A user type always yields concrete integer bounds (see type_to_smt).
+            assert lb is not None and ub is not None
+            terms = []
+            for p in range(lb, ub + 1):
+                terms.append(self.mgr.Equals(symbol, self.mgr.Real(p)))
+            self.type_constraints[i].add(self.mgr.Or(terms))
         else:
             if lb is not None:
                 self.type_constraints[i].add(self.mgr.GE(symbol, self.mgr.Real(lb)))
