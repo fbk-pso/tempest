@@ -134,8 +134,10 @@ git clone https://github.com/fbk-pso/tempest.git
 cd tempest
 uv sync                      # .venv + dev deps (z3 is a mandatory dependency)
 uv run pre-commit install    # one-time
-# Optional: OptiMathSAT, needed for the full test suite (z3 already installed):
-uv run --with setuptools pysmt-install --optimsat --confirm-agreement
+# Optional: OptiMathSAT, needed for the full test suite (z3 already installed).
+# pysmt-install compiles it into the venv, so add setuptools for the build:
+uv pip install setuptools
+uv run --no-sync pysmt-install --optimsat --confirm-agreement
 ```
 
 This repo uses **uv** for environment/dependency management (single
@@ -166,7 +168,8 @@ dependency, always present) and `optimsat` (installed via `pysmt-install`):
 
 ```bash
 uv sync
-uv run --with setuptools pysmt-install --optimsat --confirm-agreement
+uv pip install setuptools  # build-time only, for pysmt-install
+uv run --no-sync pysmt-install --optimsat --confirm-agreement
 just test
 ```
 

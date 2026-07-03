@@ -30,9 +30,12 @@ jobs:
         run: uv sync --frozen
 
       - name: Install OptiMathSAT
-        # z3 is a mandatory dependency (installed by uv sync above); OptiMathSAT
-        # is compiled by pysmt-install (setuptools pulled in only for the build).
-        run: uv run --with setuptools pysmt-install --optimsat --confirm-agreement
+        # Compiled + installed into the project venv's site-packages (not a
+        # `uv run --with` overlay, which is ephemeral); setuptools is added to the
+        # venv only for the build and kept via --no-sync. See test.yml for detail.
+        run: |
+          uv pip install setuptools
+          uv run --no-sync pysmt-install --optimsat --confirm-agreement
 
       - name: Clone unified-planning test cases (matching the locked commit)
         run: |

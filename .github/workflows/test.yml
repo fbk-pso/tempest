@@ -63,9 +63,14 @@ jobs:
 
       - name: Install OptiMathSAT
         # z3 is a mandatory dependency (installed by uv sync above). OptiMathSAT
-        # is not pip-installable: pysmt-install compiles it, needing setuptools
-        # only at build time, so pull it in transiently instead of tracking it.
-        run: uv run --with setuptools pysmt-install --optimsat --confirm-agreement
+        # isn't pip-installable: pysmt-install compiles it and installs the
+        # binding into the running interpreter's site-packages. It must therefore
+        # run against the project venv (NOT a `uv run --with` overlay, which is
+        # ephemeral and would discard the binding). setuptools is needed only for
+        # the build, so add it to the venv with --no-sync so it isn't pruned.
+        run: |
+          uv pip install setuptools
+          uv run --no-sync pysmt-install --optimsat --confirm-agreement
 
       - name: Run the test suite
         run: just test

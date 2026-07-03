@@ -43,8 +43,9 @@ of planner engines.
 ```bash
 uv sync                      # .venv + dev deps (z3 is a mandatory dependency)
 uv run pre-commit install    # one-time
-# Optional: OptiMathSAT, needed for the full test suite (z3 already installed):
-uv run --with setuptools pysmt-install --optimsat --confirm-agreement
+# Optional: OptiMathSAT for the full test suite (compiled into the venv):
+uv pip install setuptools
+uv run --no-sync pysmt-install --optimsat --confirm-agreement
 ```
 
 `uv` is required. `just` is the task runner — install via `uv tool install rust-just` or your package manager.
@@ -72,7 +73,8 @@ both `z3` (a mandatory dependency, always present) and `optimsat` (installed via
 
 ```bash
 uv sync
-uv run --with setuptools pysmt-install --optimsat --confirm-agreement
+uv pip install setuptools  # build-time only, for pysmt-install
+uv run --no-sync pysmt-install --optimsat --confirm-agreement
 just test
 ```
 

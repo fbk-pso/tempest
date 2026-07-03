@@ -8,8 +8,8 @@ install:
     uv sync
 
 # Run pytest. Set PYTHONPATH externally for the UP fixtures (up_test_cases).
-# The z3 tests work out of the box; for the OptiMathSAT cases, first run:
-#   uv run --with setuptools pysmt-install --optimsat --confirm-agreement
+# The z3 tests work out of the box; for the OptiMathSAT cases, first install it
+# into the venv: uv pip install setuptools && uv run --no-sync pysmt-install --optimsat --confirm-agreement
 test:
     uv run pytest tests/ -v
 
