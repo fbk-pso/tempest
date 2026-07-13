@@ -26,7 +26,7 @@ classifiers = [
 [dependency-groups]
 dev = [
     "pytest==9.1.1",
-    "mypy==2.1.0",
+    "mypy==2.2.0",
     "ruff==0.15.20",
     "pre-commit==4.6.0",
     "unified-planning @ git+https://github.com/aiplan4eu/unified-planning.git",
