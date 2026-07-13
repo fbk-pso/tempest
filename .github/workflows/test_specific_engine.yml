@@ -9,60 +9,47 @@ on:
       engine-class:
         required: true
         type: string
-      unified-planning-commit:
-        required: true
-        type: string
 
 jobs:
   unified-planning-report:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       - name: Set up Python
-        uses: actions/setup-python@v1
-        with:
-          python-version: "3.12"
+        run: uv python install 3.12
 
-      - name: Install setuptools
-        run: python3 -m pip install setuptools
+      - name: Sync environment
+        run: uv sync --frozen
 
-      - name: Install Python dependencies
-        run: python3 -m pip install -r requirements.txt
-
-      - name: Install tempest
-        run: python3 -m pip install .
-
-      - name: Install msat using pysmt
-        run: pysmt-install --msat --confirm-agreement
-
-      - name: Install optimsat using pysmt
-        run: pysmt-install --optimsat --confirm-agreement
-
-      - name: Install z3 using pysmt
-        run: pysmt-install --z3 --confirm-agreement
-
-      - name: Add the benchmarks folder to the PYTHONPATH
+      - name: Install OptiMathSAT
+        # Compiled + installed into the project venv's site-packages (not a
+        # `uv run --with` overlay, which is ephemeral); setuptools is added to the
+        # venv only for the build and kept via --no-sync. See test.yml for detail.
         run: |
-          PWD=$(pwd)
-          export PYTHONPATH=$PWD/benchmarks:$PYTHONPATH
-          echo "PYTHONPATH=$PYTHONPATH" >> $GITHUB_ENV
+          uv pip install setuptools
+          uv run --no-sync pysmt-install --optimsat --confirm-agreement
 
-      - name: Checkout unified-planning
-        uses: actions/checkout@v2
-        with:
-          repository: aiplan4eu/unified-planning
-          path: unified-planning
-          ref: ${{inputs.unified-planning-commit}}
-
-      - name: Install unified-planning
-        run: python3 -m pip install unified-planning/
-
-      - name: Create up.ini to install tempest  in the Unified Planning
+      - name: Clone unified-planning test cases (matching the locked commit)
         run: |
-          echo -e "[engine ${{inputs.engine-name}}]\nmodule_name: tempest.engine\nclass_name: ${{inputs.engine-class}}" > .up.ini
+          # report.py and up_test_cases/ live in the UP repo, not the installed
+          # package, so clone the repo at the same commit uv.lock pins.
+          sha=$(python3 -c "import tomllib; d = tomllib.load(open('uv.lock', 'rb')); print(next(p['source']['git'].rsplit('#', 1)[1] for p in d['package'] if p['name'] == 'unified-planning'))")
+          git clone --filter=blob:none https://github.com/aiplan4eu/unified-planning.git up-checkout
+          git -C up-checkout checkout "$sha"
 
-      - name: Run the report
-        run: python3 unified-planning/up_test_cases/report.py ${{inputs.engine-name}} -m oneshot -t 3 -e test_cases -b logistic farmland classical:depots parking counter_to_50
+      - name: Register the tempest engine
+        run: |
+          echo -e "[engine ${{ inputs.engine-name }}]\nmodule_name: tempest.engine\nclass_name: ${{ inputs.engine-class }}" > .up.ini
+
+      - name: Run the UP report
+        env:
+          PYTHONPATH: ${{ github.workspace }}/benchmarks
+        run: uv run python up-checkout/up_test_cases/report.py ${{ inputs.engine-name }} -m oneshot -t 3 -e test_cases -b logistic farmland classical:depots parking counter_to_50

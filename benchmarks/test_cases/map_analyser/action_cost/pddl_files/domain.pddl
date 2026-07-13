@@ -1,8 +1,8 @@
 (define (domain mapanalyzer)
 (:requirements :typing :durative-actions)
-  (:types  
+  (:types
 	car
-	junction	
+	junction
 	garage
 	road
 	)
@@ -19,8 +19,8 @@
     (at_garage ?g - garage ?xy - junction ) ;; position of the starting garage
 
   )
-(:functions 
-	(distance ?initial - junction ?final - junction) 
+(:functions
+	(distance ?initial - junction ?final - junction)
 	(build-time)
 	(remove-time)
 	(speed ?v - car)
@@ -33,13 +33,13 @@
 (:durative-action move_vehicle_road
   :parameters (?xy_initial - junction ?xy_final - junction ?machine - car ?r1 - road)
   :duration (= ?duration (/ (distance ?xy_initial ?xy_final) (speed ?machine)))
-  :condition (and 
+  :condition (and
 		(at start (at_jun ?machine ?xy_initial))
 		(at start (road_connect ?r1 ?xy_initial ?xy_final))
 		(at start (in_place ?r1))
 		(at end (clear ?xy_final))
 		)
-  :effect (and  
+  :effect (and
 		(at start (clear ?xy_initial))
 		(at end (at_jun ?machine ?xy_final))
 		(at start (not (at_jun ?machine ?xy_initial)))
@@ -52,10 +52,10 @@
 (:durative-action vehicle_arrived
   :parameters (?xy_final - junction ?machine - car )
   :duration (= ?duration (arrived-time))
-  :condition (and 
+  :condition (and
 		(at start (at_jun ?machine ?xy_final))
 		)
-  :effect (and  
+  :effect (and
 		(at end (clear ?xy_final))
 		(at end (arrived ?machine ?xy_final))
 		(at end (not (at_jun ?machine ?xy_final)))
@@ -66,13 +66,13 @@
 ;; vehicle moved from the initial garage in the network.
 (:durative-action vehicle_start
   :parameters (?xy_final - junction ?machine - car ?g - garage)
-  :duration (= ?duration (start-time)) 
-  :condition (and 
+  :duration (= ?duration (start-time))
+  :condition (and
 		(at start (at_garage ?g ?xy_final))
 		(at start (starting ?machine ?g))
 		(at start (clear ?xy_final))
 		)
-  :effect (and  
+  :effect (and
 		(at end (not (clear ?xy_final)))
 		(at end (at_jun ?machine ?xy_final))
 		(at start (not (starting ?machine ?g)))
@@ -83,13 +83,13 @@
 ;; build road
 (:durative-action build_road
   :parameters (?xy_initial - junction ?xy_final - junction ?r1 - road)
-  :duration (= ?duration (* (distance ?xy_initial ?xy_final) (build-time))) 
-  :condition (and 
+  :duration (= ?duration (* (distance ?xy_initial ?xy_final) (build-time)))
+  :condition (and
 		(at start (clear ?xy_final))
 		(at start (available ?r1))
 		(at start (connected ?xy_initial ?xy_final))
 		)
-  :effect (and  
+  :effect (and
 		(at end (road_connect ?r1 ?xy_initial ?xy_final))
 		(at end (road_connect ?r1 ?xy_final ?xy_initial))
 		(at start (in_place ?r1))
@@ -101,13 +101,13 @@
 ;; remove a road
 (:durative-action remove_road
   :parameters (?xy_initial - junction ?xy_final - junction ?r1 - road)
-  :duration (= ?duration (* (distance ?xy_initial ?xy_final) (remove-time))) 
-  :condition (and 
+  :duration (= ?duration (* (distance ?xy_initial ?xy_final) (remove-time)))
+  :condition (and
 		(at start (road_connect ?r1 ?xy_initial ?xy_final))
 		(at start (road_connect ?r1 ?xy_final ?xy_initial))
 		(at start (in_place ?r1))
 		)
-  :effect (and  
+  :effect (and
 		(at end (not (in_place ?r1)))
 		(at end (available ?r1))
 		(at start (not (road_connect ?r1 ?xy_initial ?xy_final)))

@@ -4,18 +4,24 @@
 
 TemPEST supports both **satisficing** and **optimal** temporal planning, with the ability to **minimize makespan** and **action costs**.
 
-## Requirements
-
-TemPEST relies on [PySMT](https://github.com/pysmt/pysmt) to interface with SMT/OMT solvers. You must install PySMT and at least one solver (e.g., Z3):
-
-```bash
-pip3 install pysmt>=0.9.7.dev333
-pysmt-install --z3
-```
-
 ## Installation
 
-TemPEST is not currently available on PyPI and must be installed from source.
+TemPEST is distributed on PyPI under the name **`up-tempest`** (the import
+package is still `tempest`). It builds on
+[PySMT](https://github.com/pysmt/pysmt) and ships with **Z3** as the default
+SMT/OMT solver, so it works out of the box:
+
+```bash
+pip3 install up-tempest
+```
+
+To use a different solver (e.g. OptiMathSAT), install it via PySMT:
+
+```bash
+pysmt-install --optimsat   # or --msat, ...
+```
+
+Alternatively, install the latest development version from source:
 
 ```bash
 pip3 install git+https://github.com/fbk-pso/tempest.git
@@ -85,11 +91,18 @@ TemPEST is based on the following research papers:
 
 - Panjkovic, S., & Micheli, A. (2023). *Expressive optimal temporal planning via optimization modulo theory.* **AAAI 2023**
 
+## Contributing
+
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for the
+developer setup (uv + just + ruff + mypy), the contribution workflow, and the
+Contributor License Agreement (CLA). All participation is subject to our
+[Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## License
 
-TemPEST is released under the GNU Lesser General Public License v3.0 (LGPL-3.0).
-See the `LICENSE` file for full details.
+TemPEST is released under the GNU General Public License v3.0 (GPL-3.0).
+See the [LICENSE](LICENSE) file for full details.
 
 ## Contact
 
-For questions, bug reports, or contributions, please open an issue on GitHub or contact the authors.
+For questions, bug reports, or contributions, please open an issue on GitHub or contact the authors at <pso-tools@fbk.eu>.

@@ -116,7 +116,7 @@
   & && && \land \left( \bigwedge\limits_{s \in \{1, \ldots, h-1\}} \left( t_{s-1} < \llbracket \tau_1 \rrbracket \land t_s \geq \llbracket \tau_1 \rrbracket \land \right) \implies [e]_{s-1} \right)\\
   & && && \land \left( \llbracket \tau_2 \rrbracket \leq t_{h-1} \right) \land \left( \left( \llbracket \tau_1 \rrbracket = 0 \right) \implies [e]_0 \right) \\ \\
   & &&\land \bigwedge\limits_{\substack{[\tau, \text{end}] \; e \in G\\\ \tau \ne \text{end}}} &&\left( \bigwedge\limits_{s \in \{1, \ldots, h-1\}} \left( t_s \geq \llbracket \tau \rrbracket \right) \implies [e]_{s} \right)\\
-  & && && \land \left( \bigwedge\limits_{s \in \{1, \ldots, h-1\}} \left( t_{s-1} < \llbracket \tau \rrbracket \land t_s \geq \llbracket \tau \rrbracket \right) \implies [e]_{s-1} \right)\\ 
+  & && && \land \left( \bigwedge\limits_{s \in \{1, \ldots, h-1\}} \left( t_{s-1} < \llbracket \tau \rrbracket \land t_s \geq \llbracket \tau \rrbracket \right) \implies [e]_{s-1} \right)\\
   & && && \land \left( \left( \llbracket \tau \rrbracket = 0 \right) \implies [e]_0 \right) \\ \\
   & &&\land \bigwedge\limits_{[\text{end}] \; e \in G} &&\left( [e]_{h-1} \right)\\
 \end{align*}
@@ -175,10 +175,10 @@
 \begin{align*}
   &\varphi_{h}^{\text{GOALS}}: && \bigwedge\limits_{\substack{[\tau_1, \tau_2] \; e \in G\\\ \tau_1 \ne \text{end} \land \tau_2 \ne \text{end} \\ \tau_1 \leq \tau_2 }} &&\left( \bigwedge\limits_{s \in \{1, \ldots, h-1\}} \left(t_s \geq \llbracket \tau_1 \rrbracket \land t_s < \llbracket \tau_2 \rrbracket \right) \implies [e]_{s} \right)\\
   & && && \land \left( \bigwedge\limits_{s \in \{1, \ldots, h-1\}} \left( t_{s-1} < \llbracket \tau_1 \rrbracket \land t_s \geq \llbracket \tau_1 \rrbracket \right) \implies [e]_{s-1} \right)\\
-  & && &&  \land \left( \left( \llbracket \tau_1 \rrbracket = 0 \right) \implies [e]_0 \right) \\ 
+  & && &&  \land \left( \left( \llbracket \tau_1 \rrbracket = 0 \right) \implies [e]_0 \right) \\
   & && && \land \left( t_{h-1}< \llbracket \tau_2 \rrbracket \implies \left( [\phi]_{h-1} \lor \bigvee\limits_{f \in \text{vars}(\phi)} \text{mod}_f \right) \right)\\
   & &&\land \bigwedge\limits_{\substack{[\tau, \text{end}] \; e \in G\\\ \tau \ne \text{end}}} &&\left( \bigwedge\limits_{s \in \{1, \ldots, h-1\}} \left( t_s \geq \llbracket \tau \rrbracket \right) \implies [e]_{s} \right)\\
-  & && && \land \left( \bigwedge\limits_{s \in \{1, \ldots, h-1\}} \left( t_{s-1} < \llbracket \tau \rrbracket \land t_s \geq \llbracket \tau \rrbracket \right) \implies [e]_{s-1} \right)\\ 
+  & && && \land \left( \bigwedge\limits_{s \in \{1, \ldots, h-1\}} \left( t_{s-1} < \llbracket \tau \rrbracket \land t_s \geq \llbracket \tau \rrbracket \right) \implies [e]_{s-1} \right)\\
   & && && \land \left( \left( \llbracket \tau \rrbracket = 0 \right) \implies [e]_0 \right) \\
   & && && \land \left( t_{h-1} < \llbracket \tau \rrbracket \implies \left( [\phi]_{h-1} \lor \bigvee\limits_{f \in \text{vars}(\phi)} \text{mod}_f \right) \right)
   \\
@@ -231,7 +231,7 @@
 \end{align*}
 
 \begin{align*}
-  &\varphi_0^{\text{TILS}}: \bigwedge\limits_{\xi \equiv [\tau] \; f \coloneqq e \in \text{TILS}} q_1^{0, \xi} 
+  &\varphi_0^{\text{TILS}}: \bigwedge\limits_{\xi \equiv [\tau] \; f \coloneqq e \in \text{TILS}} q_1^{0, \xi}
 \end{align*}
 
 \begin{align*}
