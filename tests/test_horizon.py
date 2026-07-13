@@ -17,8 +17,8 @@
 
 import os
 import sys
+from collections.abc import Iterator
 from fractions import Fraction
-from typing import Iterator, Tuple
 from unittest import TestCase
 
 from unified_planning.io import PDDLReader
@@ -307,7 +307,7 @@ class TestHorizon(TestCase):
                         result.plan, f"{problem.name}, {min_correct_horizon}, {params}"
                     )
 
-    def _get_problems_with_min_horizon(self) -> Iterator[Tuple[Problem, int]]:
+    def _get_problems_with_min_horizon(self) -> Iterator[tuple[Problem, int]]:
         problem_functions = [
             self._basic_counter,
             self._move_ball,
@@ -322,14 +322,13 @@ class TestHorizon(TestCase):
         ]
 
         for problem_func in problem_functions:
-            for problem, min_correct_horizon in problem_func():
-                yield problem, min_correct_horizon
+            yield from problem_func()
         # for problem, min_correct_horizon in self._move_ball():
         #     yield problem, min_correct_horizon
         # for problem, min_correct_horizon in self._majsp_1_1_2_1():
         #     yield problem, min_correct_horizon
 
-    def _basic_counter(self) -> Iterator[Tuple[Problem, int]]:
+    def _basic_counter(self) -> Iterator[tuple[Problem, int]]:
         base_problem = Problem("counter")
         counter = base_problem.add_fluent("counter", IntType(), default_initial_value=0)
 

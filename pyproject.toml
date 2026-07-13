@@ -48,7 +48,7 @@ target-version = "py310"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I"]
+select = ["E", "F", "W", "I", "UP"]
 ignore = [
     "E501",  # line-too-long: handled by the formatter; the rest are unsplittable
     "E731",  # lambda-assignment: the small inline lambdas here read fine

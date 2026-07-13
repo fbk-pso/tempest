@@ -15,8 +15,9 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 
+from collections.abc import Iterable
 from itertools import chain
-from typing import Any, Iterable, Optional, Tuple
+from typing import Any
 
 from unified_planning.model import DurativeAction, Fluent, FNode, InstantaneousAction
 
@@ -40,7 +41,7 @@ class MonolithicEncoder(BaseEncoder):
             )
         condition_last_concrete_step = self.to_smt(c, h - 1, w, action)
         condition_abstract_step = self.mgr.Or(
-            (self.fluent_mod(exp, action, w) for exp in self._get_sorted_free_vars(c))
+            self.fluent_mod(exp, action, w) for exp in self._get_sorted_free_vars(c)
         )
         return self.mgr.Implies(
             start_condition_after_last_concrete_step,
@@ -94,7 +95,7 @@ class MonolithicEncoder(BaseEncoder):
 
         return self.mgr.Implies(self.a(action, i), self.mgr.And(terms))
 
-    def encode_step_zero(self) -> Optional[Any]:
+    def encode_step_zero(self) -> Any | None:
         return None
 
     def encode_timed_goals(self, h: int, optimal: bool):
@@ -119,7 +120,7 @@ class MonolithicEncoder(BaseEncoder):
         return self.mgr.And(res)
 
     def encode_fluent_mod_formula(
-        self, fluent: Fluent, fluent_exp: Optional[FNode], h: int
+        self, fluent: Fluent, fluent_exp: FNode | None, h: int
     ):
         assert not (self.ground_abstract_step and self.param_getter.get(fluent_exp))
         res = []
@@ -188,7 +189,7 @@ class MonolithicEncoder(BaseEncoder):
 
         return self.mgr.Or(res)
 
-    def encode_step(self, h: int) -> Tuple[Any, Any]:
+    def encode_step(self, h: int) -> tuple[Any, Any]:
         res = []
 
         # Encode fluents initial values

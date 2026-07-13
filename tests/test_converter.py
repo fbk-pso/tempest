@@ -15,7 +15,7 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 
-from typing import OrderedDict
+from collections import OrderedDict
 from unittest import TestCase
 
 from pysmt.environment import get_env

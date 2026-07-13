@@ -15,8 +15,7 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 
-from functools import lru_cache
-from typing import Dict, List, Optional
+from functools import cache
 
 import pysmt
 import pysmt.environment
@@ -35,52 +34,52 @@ from unified_planning.model import (
 
 class SymbolEncoder:
     def __init__(
-        self, objects: Dict[Object, int], pysmt_env: pysmt.environment.Environment
+        self, objects: dict[Object, int], pysmt_env: pysmt.environment.Environment
     ):
         assert pysmt_env is not None
         self.pysmt_env = pysmt_env
         self.mgr = self.pysmt_env.formula_manager
         self.objects = objects
-        self.type_constraints: Dict[int, set] = {}
+        self.type_constraints: dict[int, set] = {}
         self.c = 0
 
-    @lru_cache(maxsize=None)
+    @cache
     def t(self, i: int):
         return self.mgr.Symbol(f"t@{i}", pysmt.typing.REAL)
 
-    @lru_cache(maxsize=None)
+    @cache
     def t_a(self, a: Action, h: int):
         return self.mgr.Symbol(f"t{a.name}@{h}", pysmt.typing.REAL)
 
-    @lru_cache(maxsize=None)
+    @cache
     def t_last(self):
         return self.mgr.Symbol("t@last", pysmt.typing.REAL)
 
-    @lru_cache(maxsize=None)
+    @cache
     def action(self, action: Action, i: int):
         return self.mgr.Symbol(f"act_{action.name}@{i}")
 
-    @lru_cache(maxsize=None)
-    def chain_var(self, action: Optional[Action], e: Effect, i: int, w: int):
+    @cache
+    def chain_var(self, action: Action | None, e: Effect, i: int, w: int):
         self.c += 1
         if action is None:
             return self.mgr.Symbol(f"problem_{self.c}@{i}-{w}")
         else:
             return self.mgr.Symbol(f"act_{action.name}_{self.c}@{i}-{w}")
 
-    @lru_cache(maxsize=None)
+    @cache
     def duration(self, action: DurativeAction, i: int):
         return self.mgr.Symbol(f"dur_{action.name}@{i}", pysmt.typing.REAL)
 
-    @lru_cache(maxsize=None)
-    def fluent(self, fluent: Fluent, args: List[FNode], i: int):
+    @cache
+    def fluent(self, fluent: Fluent, args: list[FNode], i: int):
         smt_type, lb, ub = self.type_to_smt(fluent.type)
         args_str = f"_{'_'.join([str(a) for a in args])}" if args else ""
         res = self.mgr.Symbol(f"fluent_{fluent.name}{args_str}@{i}", smt_type)
         self.add_type_constraints(res, fluent.type, lb, ub, i)
         return res
 
-    @lru_cache(maxsize=None)
+    @cache
     def parameter(self, action: Action, parameter: Parameter, i: int):
         smt_type, lb, ub = self.type_to_smt(parameter.type)
         res = self.mgr.Symbol(f"parameter_{action.name}_{parameter.name}@{i}", smt_type)
@@ -88,7 +87,7 @@ class SymbolEncoder:
         return res
 
     def add_type_constraints(
-        self, symbol, type: Type, lb: Optional[int], ub: Optional[int], i: int
+        self, symbol, type: Type, lb: int | None, ub: int | None, i: int
     ):
         self.type_constraints.setdefault(i, set())
         if type.is_user_type():

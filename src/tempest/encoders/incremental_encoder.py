@@ -15,9 +15,10 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 
-from functools import lru_cache
+from collections.abc import Iterable
+from functools import cache
 from itertools import chain
-from typing import Any, Iterable, Optional
+from typing import Any
 
 from unified_planning.model import DurativeAction, InstantaneousAction
 from unified_planning.model.fluent import get_all_fluent_exp
@@ -29,7 +30,7 @@ class IncrementalEncoder(BaseEncoder):
     def chain_var(self, action, e, i, w):
         return self.symenc.chain_var(action, e, i, w)
 
-    @lru_cache(maxsize=None)
+    @cache
     def vcg(self):
         return self.mgr.FreshSymbol(template="vcg%d")
 
@@ -64,10 +65,8 @@ class IncrementalEncoder(BaseEncoder):
                         )
                     condition_last_concrete_step = self.to_smt(c, i, w, action)
                     condition_abstract_step = self.mgr.Or(
-                        (
-                            self.fluent_mod(exp, action, w)
-                            for exp in self._get_sorted_free_vars(c)
-                        )
+                        self.fluent_mod(exp, action, w)
+                        for exp in self._get_sorted_free_vars(c)
                     )
                     temp_l.append(
                         self.mgr.Implies(
@@ -138,10 +137,7 @@ class IncrementalEncoder(BaseEncoder):
             c = self.em.And(lc)
             condition_last_concrete_step = self.to_smt(c, i - 1, i, scope=action)
             condition_abstract_step = self.mgr.Or(
-                (
-                    self.fluent_mod(exp, action, i)
-                    for exp in self._get_sorted_free_vars(c)
-                )
+                self.fluent_mod(exp, action, i) for exp in self._get_sorted_free_vars(c)
             )
             temp_l.append(
                 self.mgr.Implies(
@@ -266,7 +262,7 @@ class IncrementalEncoder(BaseEncoder):
 
         return self.mgr.And(res), self.mgr.And(temp_res)
 
-    def encode_step_zero(self) -> Optional[Any]:
+    def encode_step_zero(self) -> Any | None:
         res = []
 
         # Encode fluents initial values
@@ -398,10 +394,8 @@ class IncrementalEncoder(BaseEncoder):
                 res.append(self.encode_condition_or_goal(None, it, g, i, 0, None))
                 if self.optimal:
                     mod_f = self.mgr.Or(
-                        (
-                            self.fluent_mod(exp, None, None)
-                            for exp in self._get_sorted_free_vars(g)
-                        )
+                        self.fluent_mod(exp, None, None)
+                        for exp in self._get_sorted_free_vars(g)
                     )
                     temp_res.append(
                         self.mgr.Implies(

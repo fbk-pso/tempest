@@ -16,9 +16,10 @@
 #
 
 import warnings
+from collections.abc import Callable, Iterator
 from fractions import Fraction
 from time import time
-from typing import IO, Callable, Iterator, Optional
+from typing import IO
 
 import pysmt
 import pysmt.environment
@@ -96,7 +97,7 @@ class _BaseEngine(up.engines.Engine, up.engines.mixins.OneshotPlannerMixin):
         return base_kind
 
     @staticmethod
-    def get_credits(**kwargs) -> Optional["up.engines.Credits"]:
+    def get_credits(**kwargs) -> "up.engines.Credits | None":
         return credits
 
 
@@ -120,15 +121,15 @@ class TempestEngine(_BaseEngine, up.engines.mixins.AnytimePlannerMixin):
         return False
 
     @staticmethod
-    def get_credits(**kwargs) -> Optional["up.engines.Credits"]:
+    def get_credits(**kwargs) -> "up.engines.Credits | None":
         return credits
 
     def _solve(
         self,
         problem: "up.model.AbstractProblem",
-        heuristic: Optional[Callable[["up.model.state.State"], Optional[float]]] = None,
-        timeout: Optional[float] = None,
-        output_stream: Optional[IO[str]] = None,
+        heuristic: Callable[["up.model.state.State"], float | None] | None = None,
+        timeout: float | None = None,
+        output_stream: IO[str] | None = None,
     ) -> "up.engines.results.PlanGenerationResult":
         assert isinstance(problem, up.model.Problem)
         if heuristic is not None:
@@ -139,9 +140,9 @@ class TempestEngine(_BaseEngine, up.engines.mixins.AnytimePlannerMixin):
     def _get_solutions_with_params(
         self,
         problem: "up.model.AbstractProblem",
-        timeout: Optional[float] = None,
-        output_stream: Optional[IO[str]] = None,
-        warm_start_plan: Optional["up.plans.Plan"] = None,
+        timeout: float | None = None,
+        output_stream: IO[str] | None = None,
+        warm_start_plan: "up.plans.Plan | None" = None,
         **kwargs,
     ) -> Iterator["up.engines.results.PlanGenerationResult"]:
         assert isinstance(problem, up.model.Problem)
@@ -227,8 +228,8 @@ class TempestEngine(_BaseEngine, up.engines.mixins.AnytimePlannerMixin):
     def _get_solutions(
         self,
         problem: "up.model.AbstractProblem",
-        timeout: Optional[float] = None,
-        output_stream: Optional[IO[str]] = None,
+        timeout: float | None = None,
+        output_stream: IO[str] | None = None,
     ) -> Iterator["up.engines.results.PlanGenerationResult"]:
         return self._get_solutions_with_params(problem, timeout, output_stream)
 
@@ -247,9 +248,9 @@ class TempestOptimal(_BaseEngine):
         horizon=None,
         solver_name=None,
         ground_abstract_step: bool = True,
-        grounder_name: Optional[str] = None,
+        grounder_name: str | None = None,
         sat_before_opt: bool = True,
-        secondary_objective: Optional[str] = "weighted",
+        secondary_objective: str | None = "weighted",
     ):
         super().__init__(incremental, horizon, solver_name)
         self.ground_abstract_step = ground_abstract_step
@@ -283,15 +284,15 @@ class TempestOptimal(_BaseEngine):
         return True
 
     @staticmethod
-    def get_credits(**kwargs) -> Optional["up.engines.Credits"]:
+    def get_credits(**kwargs) -> "up.engines.Credits | None":
         return credits
 
     def _solve(
         self,
         problem: "up.model.AbstractProblem",
-        heuristic: Optional[Callable[["up.model.state.State"], Optional[float]]] = None,
-        timeout: Optional[float] = None,
-        output_stream: Optional[IO[str]] = None,
+        heuristic: Callable[["up.model.state.State"], float | None] | None = None,
+        timeout: float | None = None,
+        output_stream: IO[str] | None = None,
     ) -> "up.engines.results.PlanGenerationResult":
         assert isinstance(problem, up.model.Problem)
         if heuristic is not None:
@@ -492,7 +493,7 @@ class TempestOptimalNonIncremental(TempestOptimal):
         horizon=None,
         solver_name=None,
         ground_abstract_step: bool = True,
-        grounder_name: Optional[str] = None,
+        grounder_name: str | None = None,
         sat_before_opt: bool = True,
     ):
         super().__init__(
