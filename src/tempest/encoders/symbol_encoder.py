@@ -93,9 +93,9 @@ class SymbolEncoder:
         if type.is_user_type():
             # A user type always yields concrete integer bounds (see type_to_smt).
             assert lb is not None and ub is not None
-            terms = []
-            for p in range(lb, ub + 1):
-                terms.append(self.mgr.Equals(symbol, self.mgr.Real(p)))
+            terms = [
+                self.mgr.Equals(symbol, self.mgr.Real(p)) for p in range(lb, ub + 1)
+            ]
             self.type_constraints[i].add(self.mgr.Or(terms))
         else:
             if lb is not None:

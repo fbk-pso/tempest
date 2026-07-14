@@ -106,6 +106,7 @@ class BaseEncoder(ABC):
                 warnings.warn(
                     "There are no grounders for this problem so the ground_abstract_step is disabled in this solve call",
                     UserWarning,
+                    stacklevel=2,
                 )
                 self.ground_abstract_step = False
 
@@ -149,7 +150,7 @@ class BaseEncoder(ABC):
             for ut_parameter in filter(
                 lambda t: t.type.is_user_type(), action.parameters
             ):
-                objects = objects_cache.get(ut_parameter.type, None)
+                objects = objects_cache.get(ut_parameter.type)
                 if objects is None:
                     objects = list(problem.objects(ut_parameter.type))
                     objects_cache[ut_parameter.type] = objects
@@ -162,7 +163,9 @@ class BaseEncoder(ABC):
                 valid_actions.append(action)
             else:
                 warnings.warn(
-                    f"No grounded action found for {action.name}", UserWarning
+                    f"No grounded action found for {action.name}",
+                    UserWarning,
+                    stacklevel=2,
                 )
         return valid_actions
 
@@ -230,10 +233,7 @@ class BaseEncoder(ABC):
         )
         smt_dur = self.dur(action, i)
         if t.is_from_start():
-            if t.delay != 0:
-                tp = self.mgr.Plus(smt_t, self.mgr.Real(t.delay))
-            else:
-                tp = smt_t
+            tp = self.mgr.Plus(smt_t, self.mgr.Real(t.delay)) if t.delay != 0 else smt_t
         else:
             if t.delay != 0:
                 tp = self.mgr.Plus(smt_t, smt_dur, self.mgr.Real(t.delay))
@@ -280,8 +280,7 @@ class BaseEncoder(ABC):
         else:
             smt_tp = self.encode_tp(action, t, w, h)
         eff = [self.mgr.Equals(self.t(i), smt_tp)]
-        for e in le:
-            eff.append(self.encode_effect(action, e, i, w))
+        eff.extend(self.encode_effect(action, e, i, w) for e in le)
         return self.mgr.And(eff)
 
     def encode_condition_or_goal(
@@ -379,15 +378,12 @@ class BaseEncoder(ABC):
         return self.mgr.And(terms)
 
     def encode_instantaneous_action(self, action: InstantaneousAction, i: int):
-        terms = []
         smt_a = self.a(action, i)
 
         # Encode preconditions
-        for p in action.preconditions:
-            terms.append(self.to_smt(p, i - 1, i, scope=action))
+        terms = [self.to_smt(p, i - 1, i, scope=action) for p in action.preconditions]
         # Encode effects
-        for e in action.effects:
-            terms.append(self.encode_effect(action, e, i, i))
+        terms.extend(self.encode_effect(action, e, i, i) for e in action.effects)
 
         return self.mgr.Implies(smt_a, self.mgr.And(terms))
 
@@ -468,13 +464,12 @@ class BaseEncoder(ABC):
                     res.append(self.mgr.Implies(cond, disjunctions[0]))
                 else:
                     res.append(self.mgr.Implies(cond, self.mgr.Or(disjunctions)))
-                    for x in range(len(disjunctions)):  # Only one is possible
-                        for y in range(x + 1, len(disjunctions)):
-                            res.append(
-                                self.mgr.Not(
-                                    self.mgr.And(disjunctions[x], disjunctions[y])
-                                )
-                            )
+                    # Only one is possible
+                    res.extend(
+                        self.mgr.Not(self.mgr.And(disjunctions[x], disjunctions[y]))
+                        for x in range(len(disjunctions))
+                        for y in range(x + 1, len(disjunctions))
+                    )
         return self.mgr.And(res)
 
     def is_mutex(
@@ -533,12 +528,11 @@ class BaseEncoder(ABC):
             for j in range(1, i):
                 a_j = self.a(act, j)
                 a_j_params = tuple(self.param(act, p, j) for p in act.parameters)
-                assert len(a_i_params) == len(a_j_params)
 
                 same_parameters = self.mgr.And(
                     (
                         self.mgr.EqualsOrIff(a_i_p, a_j_p)
-                        for a_i_p, a_j_p in zip(a_i_params, a_j_params)
+                        for a_i_p, a_j_p in zip(a_i_params, a_j_params, strict=True)
                     )
                 )
                 actions_and_same_parameters = self.mgr.And(a_i, a_j, same_parameters)
@@ -560,8 +554,7 @@ class BaseEncoder(ABC):
             smt_f = self.to_smt(f, 0)
             smt_v = self.to_smt(v, 0)
             res.append(self.mgr.EqualsOrIff(smt_f, smt_v))
-        for c in self.symenc.type_constraints.get(0, []):
-            res.append(c)
+        res.extend(self.symenc.type_constraints.get(0, []))
         return self.mgr.And(res)
 
     def extract_plan(
@@ -740,7 +733,7 @@ class BaseEncoder(ABC):
                                 self.to_smt(f1c, i, i, action_a),
                                 self.to_smt(f2c, j, j, action_b),
                             )
-                            for f1c, f2c in zip(f1.args, f2.args)
+                            for f1c, f2c in zip(f1.args, f2.args, strict=True)
                         ]
                     )
                 )
@@ -812,7 +805,7 @@ class BaseEncoder(ABC):
             fluent_parameters
         ):
             sub_res = []
-            assignments = dict(zip(fluent_parameters, parameters_value))
+            assignments = dict(zip(fluent_parameters, parameters_value, strict=True))
             ground_fluent_exp = fluent_exp.substitute(assignments)
             sub_res.append(
                 self._fluent_mod(ground_fluent_exp.fluent(), ground_fluent_exp)
@@ -834,7 +827,7 @@ class BaseEncoder(ABC):
         types = tuple(param.type for param in parameters)
         domain_sizes = tuple(domain_size(self.problem, t) for t in types)
         items_list: list[list[FNode]] = []
-        for size, type in zip(domain_sizes, types):
+        for size, type in zip(domain_sizes, types, strict=True):
             items_list.append([domain_item(self.problem, type, j) for j in range(size)])
         return tuple(product(*items_list))
 
@@ -978,18 +971,19 @@ class BaseEncoder(ABC):
         return self.mgr.And(res)
 
     def encode_density_constraint(self, i: int):
-        sub_res = []
         t_i = self.t(i)
 
-        for t in self.problem.timed_effects.keys():
-            sub_res.append(self.mgr.Equals(self.encode_problem_tp(t, i), t_i))
+        sub_res = [
+            self.mgr.Equals(self.encode_problem_tp(t, i), t_i)
+            for t in self.problem.timed_effects
+        ]
 
         for act in self.actions:
             sub_res.append(self.a(act, i))
             if isinstance(act, DurativeAction):
                 for s in range(1, i):
                     a_s = self.a(act, s)
-                    for t in act.effects.keys():
+                    for t in act.effects:
                         effect_at_t_i = self.mgr.Equals(
                             self.encode_tp(act, t, s, i), t_i
                         )
@@ -998,19 +992,18 @@ class BaseEncoder(ABC):
         return self.mgr.Or(sub_res)
 
     def uses_abstact_step(self, i: int, h: int | None):
-        res = []
-
         last_concrete_step_time = self.t(i)
-        for g in self.problem.goals:
-            res.append(self.to_smt(g, i))
+        res = [self.to_smt(g, i) for g in self.problem.goals]
 
-        for it, lg in self.problem.timed_goals.items():
-            res.append(self.mgr.LE(self.encode_problem_tp(it.upper, h), self.t(i)))
+        res.extend(
+            self.mgr.LE(self.encode_problem_tp(it.upper, h), self.t(i))
+            for it in self.problem.timed_goals
+        )
 
-        for t in self.problem.timed_effects.keys():
-            res.append(
-                self.mgr.LE(self.encode_problem_tp(t, h), last_concrete_step_time)
-            )
+        res.extend(
+            self.mgr.LE(self.encode_problem_tp(t, h), last_concrete_step_time)
+            for t in self.problem.timed_effects
+        )
 
         for act in self.actions:
             if isinstance(act, DurativeAction):
@@ -1058,7 +1051,9 @@ class BaseEncoder(ABC):
                 for parameter_assignment in self._get_possible_parameters_assignments(
                     fluent_params
                 ):
-                    assignments = dict(zip(fluent_params, parameter_assignment))
+                    assignments = dict(
+                        zip(fluent_params, parameter_assignment, strict=True)
+                    )
                     p_eq = []
                     for param_exp, obj_exp in assignments.items():
                         p_eq.append(
@@ -1097,7 +1092,7 @@ class BaseEncoder(ABC):
             )
             abstract_touchers = chain(*abstract_touchers_dict.values())
 
-        for b, t, e in abstract_touchers:
+        for b, t, _e in abstract_touchers:
             if isinstance(b, DurativeAction):
                 # if the action is durative, it might have started in the concrete steps and still
                 # be relevant in the abstract steps (for example it still has to end)
@@ -1108,7 +1103,11 @@ class BaseEncoder(ABC):
                     lifted_ai = self.map_back_action_instance(b())
                     lifted_a, params_a = lifted_ai.action, lifted_ai.actual_parameters
                     parameters_assignment = dict(
-                        zip(map(self.em.ParameterExp, lifted_a.parameters), params_a)
+                        zip(
+                            map(self.em.ParameterExp, lifted_a.parameters),
+                            params_a,
+                            strict=True,
+                        )
                     )
                 for k in range(1, h):
                     b_k_formula = [self.a(lifted_a, k)]
@@ -1167,7 +1166,7 @@ class BaseEncoder(ABC):
         params = self.param_getter.get(exp)
         if action is None:
             assert not params
-            return tuple()
+            return ()
         param_exps = map(self.em.ParameterExp, action.parameters)
         return tuple(filter(lambda x: x in params, param_exps))
 
@@ -1188,14 +1187,14 @@ class BaseEncoder(ABC):
             terms = [self.mgr.GE(makespan, self.t(i))]
             for act in self.actions:
                 if isinstance(act, DurativeAction):
-                    for j in range(1, i + 1):
-                        terms.append(
-                            self.mgr.GE(
-                                makespan, self.mgr.Plus(self.t(j), self.dur(act, j))
-                            )
+                    terms.extend(
+                        self.mgr.GE(
+                            makespan, self.mgr.Plus(self.t(j), self.dur(act, j))
                         )
+                        for j in range(1, i + 1)
+                    )
             timed_goals_timings = chain(
-                *map(lambda x: (x.lower, x.upper), self.problem.timed_goals.keys())
+                *((x.lower, x.upper) for x in self.problem.timed_goals)
             )
             problem_timings = chain(
                 timed_goals_timings, self.problem.timed_effects.keys()
@@ -1334,7 +1333,7 @@ class BaseEncoder(ABC):
         for parameters_value in self._get_possible_parameters_assignments(
             cost_parameters
         ):
-            assignments = dict(zip(cost_parameters, parameters_value))
+            assignments = dict(zip(cost_parameters, parameters_value, strict=True))
             grounded_cost = self.simplifier.simplify(cost.substitute(assignments))
             assert grounded_cost.is_constant(), (
                 f"Non constant expression detected in ActionCosts: {action.name}, {metric.get_action_cost(action)}"

@@ -63,8 +63,10 @@ class MonolithicEncoder(BaseEncoder):
         # Action conditions
         for it, lc in action.conditions.items():
             c = self.em.And(lc)
-            for k in range(i, h):
-                terms.append(self.encode_condition_or_goal(action, it, c, k, i, h))
+            terms.extend(
+                self.encode_condition_or_goal(action, it, c, k, i, h)
+                for k in range(i, h)
+            )
             if self.optimal:
                 terms.append(self.condition_sat_in_abstract_step(action, it, c, i, h))
 
@@ -107,8 +109,10 @@ class MonolithicEncoder(BaseEncoder):
             else:
                 if it.lower.is_from_start() and it.lower.delay == 0:
                     res.append(self.to_smt(g, 0))
-                for i in range(1, h):
-                    res.append(self.encode_condition_or_goal(None, it, g, i, 0, h))
+                res.extend(
+                    self.encode_condition_or_goal(None, it, g, i, 0, h)
+                    for i in range(1, h)
+                )
                 if self.optimal:
                     res.append(
                         self.condition_sat_in_abstract_step(None, it, g, None, h)
@@ -137,7 +141,7 @@ class MonolithicEncoder(BaseEncoder):
             assert fluent_exp is None
             fluent_touchers_gen = chain(*abstract_fluent_touchers.values())
 
-        for action, timing, eff in fluent_touchers_gen:
+        for action, timing, _eff in fluent_touchers_gen:
             if action is None:
                 til_in_abstract_step = self.mgr.GT(
                     self.encode_problem_tp(timing, h), self.t(h - 1)
@@ -155,7 +159,11 @@ class MonolithicEncoder(BaseEncoder):
                     concrete_ai = self.map_back_action_instance(action())
                     concrete_action = concrete_ai.action
                     parameters_assignment = dict(
-                        zip(concrete_action.parameters, concrete_ai.actual_parameters)
+                        zip(
+                            concrete_action.parameters,
+                            concrete_ai.actual_parameters,
+                            strict=True,
+                        )
                     )
                     # TODO: future improvements, it would be nice to remove action parameters that do not
                     # appear in the effect from the assignment mapping
@@ -222,8 +230,7 @@ class MonolithicEncoder(BaseEncoder):
             res.append(self.encode_increasing_time(i))
 
             # Mutex constraints
-            for j in range(1, h):
-                res.append(self.encode_mutex_constraints(i, j, h))
+            res.extend(self.encode_mutex_constraints(i, j, h) for j in range(1, h))
 
             # Self-Overlapping
             if not self.problem.self_overlapping:

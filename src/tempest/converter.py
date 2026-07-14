@@ -56,7 +56,7 @@ class SMTConverter(walkers.dag.DagWalker):
         if len(args) == 0 and is_static:
             return self.constant_to_smt(self.problem.initial_value(expression))
         elif len(args) == 0 and not is_static:
-            return self.symenc.fluent(expression.fluent(), tuple(), self.i)
+            return self.symenc.fluent(expression.fluent(), (), self.i)
         else:
             res = None
             for f_exp in get_all_fluent_exp(self.problem, expression.fluent()):

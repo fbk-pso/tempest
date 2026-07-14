@@ -149,10 +149,10 @@ class IncrementalEncoder(BaseEncoder):
             )
 
         # Action effects
-        for t, _ in action.effects.items():
-            temp_l.append(
-                self.mgr.GT(self.encode_tp(action, t, i, None, True), self.t_last())
-            )
+        temp_l.extend(
+            self.mgr.GT(self.encode_tp(action, t, i, None, True), self.t_last())
+            for t in action.effects
+        )
 
         return self.mgr.Implies(self.a(action, i), self.mgr.And(temp_l))
 
@@ -223,7 +223,11 @@ class IncrementalEncoder(BaseEncoder):
                     concrete_ai = self.map_back_action_instance(action())
                     concrete_action = concrete_ai.action
                     parameters_assignment = dict(
-                        zip(concrete_action.parameters, concrete_ai.actual_parameters)
+                        zip(
+                            concrete_action.parameters,
+                            concrete_ai.actual_parameters,
+                            strict=True,
+                        )
                     )
                 a_i = self.a(concrete_action, i)
                 parameters_equality = []
@@ -361,8 +365,7 @@ class IncrementalEncoder(BaseEncoder):
                 res.append(self.encode_mutex_constraints(i, j, h=None))
 
         # Add type constraints
-        for c in self.symenc.type_constraints.get(i, []):
-            res.append(c)
+        res.extend(self.symenc.type_constraints.get(i, []))
 
         if self.optimal:
             res.append(self.mgr.Implies(self.vcg(), self.encode_density_constraint(i)))
@@ -416,16 +419,16 @@ class IncrementalEncoder(BaseEncoder):
         if self.optimal:
             for goal in self.problem.goals:
                 goals = goal.args if goal.is_and() else [goal]
-                for g in goals:
-                    temp_res.append(
-                        self.mgr.Or(
-                            [
-                                self.fluent_mod(exp, None, None)
-                                for exp in self._get_sorted_free_vars(g)
-                            ]
-                            + [self.to_smt(g, i, 0)]
-                        )
+                temp_res.extend(
+                    self.mgr.Or(
+                        [
+                            self.fluent_mod(exp, None, None)
+                            for exp in self._get_sorted_free_vars(g)
+                        ]
+                        + [self.to_smt(g, i, 0)]
                     )
+                    for g in goals
+                )
         else:
             temp_res.append(
                 self.to_smt(self.em.And(self.problem.goals), i, 0, scope=None)
@@ -433,7 +436,7 @@ class IncrementalEncoder(BaseEncoder):
 
         # fluent_mod variables
         if self.optimal:
-            for mod_f, (fluent, fluent_exp) in self.fluent_mod_var.items():
+            for fluent, fluent_exp in self.fluent_mod_var.values():
                 f, t_f = self.encode_fluent_mod_formula(fluent, fluent_exp, i)
                 res.append(f)
                 temp_res.append(t_f)

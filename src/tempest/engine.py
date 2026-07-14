@@ -133,7 +133,11 @@ class TempestEngine(_BaseEngine, up.engines.mixins.AnytimePlannerMixin):
     ) -> "up.engines.results.PlanGenerationResult":
         assert isinstance(problem, up.model.Problem)
         if heuristic is not None:
-            warnings.warn("TemPEST does not support custom heuristics.", UserWarning)
+            warnings.warn(
+                "TemPEST does not support custom heuristics.",
+                UserWarning,
+                stacklevel=2,
+            )
 
         return next(self._get_solutions_with_params(problem, timeout, output_stream))
 
@@ -296,7 +300,11 @@ class TempestOptimal(_BaseEngine):
     ) -> "up.engines.results.PlanGenerationResult":
         assert isinstance(problem, up.model.Problem)
         if heuristic is not None:
-            warnings.warn("TemPEST does not support custom heuristics.", UserWarning)
+            warnings.warn(
+                "TemPEST does not support custom heuristics.",
+                UserWarning,
+                stacklevel=2,
+            )
 
         start_time = time()
         is_in_timeout: bool = False
