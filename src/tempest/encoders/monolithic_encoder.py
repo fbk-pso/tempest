@@ -15,20 +15,37 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 
+from collections.abc import Iterable
 from itertools import chain
-from typing import Any, Iterable, Optional, Tuple
+from typing import Any
 
-from unified_planning.model import DurativeAction, Fluent, FNode, InstantaneousAction
+from pysmt.fnode import FNode as SMTFNode
+from unified_planning.model import (
+    Action,
+    DurativeAction,
+    Fluent,
+    FNode,
+    InstantaneousAction,
+    TimeInterval,
+)
 
 from tempest.encoders.base_encoder import BaseEncoder
 
 
 class MonolithicEncoder(BaseEncoder):
-    def condition_sat_in_abstract_step(self, action, it, c, w, h):
+    def condition_sat_in_abstract_step(
+        self,
+        action: Action | None,
+        it: TimeInterval,
+        c: FNode,
+        w: int | None,
+        h: int,
+    ) -> SMTFNode:
         last_concrete_step_time = self.t(h - 1)
         if action is None:
             smt_tp_1 = self.encode_problem_tp(it.lower, h)
         else:
+            assert w is not None
             smt_tp_1 = self.encode_tp(action, it.lower, w, h)
         if it.is_left_open():
             start_condition_after_last_concrete_step = self.mgr.LE(
@@ -40,14 +57,16 @@ class MonolithicEncoder(BaseEncoder):
             )
         condition_last_concrete_step = self.to_smt(c, h - 1, w, action)
         condition_abstract_step = self.mgr.Or(
-            (self.fluent_mod(exp, action, w) for exp in self._get_sorted_free_vars(c))
+            self.fluent_mod(exp, action, w) for exp in self._get_sorted_free_vars(c)
         )
         return self.mgr.Implies(
             start_condition_after_last_concrete_step,
             self.mgr.Or(condition_last_concrete_step, condition_abstract_step),
         )
 
-    def encode_durative_action(self, action: DurativeAction, i: int, h: int):
+    def encode_durative_action(
+        self, action: DurativeAction, i: int, h: int
+    ) -> SMTFNode:
         terms = []
 
         # Action duration constraints
@@ -62,8 +81,10 @@ class MonolithicEncoder(BaseEncoder):
         # Action conditions
         for it, lc in action.conditions.items():
             c = self.em.And(lc)
-            for k in range(i, h):
-                terms.append(self.encode_condition_or_goal(action, it, c, k, i, h))
+            terms.extend(
+                self.encode_condition_or_goal(action, it, c, k, i, h)
+                for k in range(i, h)
+            )
             if self.optimal:
                 terms.append(self.condition_sat_in_abstract_step(action, it, c, i, h))
 
@@ -94,10 +115,10 @@ class MonolithicEncoder(BaseEncoder):
 
         return self.mgr.Implies(self.a(action, i), self.mgr.And(terms))
 
-    def encode_step_zero(self) -> Optional[Any]:
+    def encode_step_zero(self) -> Any | None:
         return None
 
-    def encode_timed_goals(self, h: int, optimal: bool):
+    def encode_timed_goals(self, h: int, optimal: bool) -> SMTFNode:
         res = []
         for it, lg in self.problem.timed_goals.items():
             g = self.em.And(lg)
@@ -106,8 +127,10 @@ class MonolithicEncoder(BaseEncoder):
             else:
                 if it.lower.is_from_start() and it.lower.delay == 0:
                     res.append(self.to_smt(g, 0))
-                for i in range(1, h):
-                    res.append(self.encode_condition_or_goal(None, it, g, i, 0, h))
+                res.extend(
+                    self.encode_condition_or_goal(None, it, g, i, 0, h)
+                    for i in range(1, h)
+                )
                 if self.optimal:
                     res.append(
                         self.condition_sat_in_abstract_step(None, it, g, None, h)
@@ -119,8 +142,8 @@ class MonolithicEncoder(BaseEncoder):
         return self.mgr.And(res)
 
     def encode_fluent_mod_formula(
-        self, fluent: Fluent, fluent_exp: Optional[FNode], h: int
-    ):
+        self, fluent: Fluent, fluent_exp: FNode | None, h: int
+    ) -> SMTFNode:
         assert not (self.ground_abstract_step and self.param_getter.get(fluent_exp))
         res = []
         abstract_fluent_touchers = self.abstract_step_touchers.get(fluent, None)
@@ -136,7 +159,7 @@ class MonolithicEncoder(BaseEncoder):
             assert fluent_exp is None
             fluent_touchers_gen = chain(*abstract_fluent_touchers.values())
 
-        for action, timing, eff in fluent_touchers_gen:
+        for action, timing, _eff in fluent_touchers_gen:
             if action is None:
                 til_in_abstract_step = self.mgr.GT(
                     self.encode_problem_tp(timing, h), self.t(h - 1)
@@ -154,7 +177,11 @@ class MonolithicEncoder(BaseEncoder):
                     concrete_ai = self.map_back_action_instance(action())
                     concrete_action = concrete_ai.action
                     parameters_assignment = dict(
-                        zip(concrete_action.parameters, concrete_ai.actual_parameters)
+                        zip(
+                            concrete_action.parameters,
+                            concrete_ai.actual_parameters,
+                            strict=True,
+                        )
                     )
                     # TODO: future improvements, it would be nice to remove action parameters that do not
                     # appear in the effect from the assignment mapping
@@ -188,7 +215,7 @@ class MonolithicEncoder(BaseEncoder):
 
         return self.mgr.Or(res)
 
-    def encode_step(self, h: int) -> Tuple[Any, Any]:
+    def encode_step(self, h: int) -> tuple[Any, Any]:
         res = []
 
         # Encode fluents initial values
@@ -221,8 +248,7 @@ class MonolithicEncoder(BaseEncoder):
             res.append(self.encode_increasing_time(i))
 
             # Mutex constraints
-            for j in range(1, h):
-                res.append(self.encode_mutex_constraints(i, j, h))
+            res.extend(self.encode_mutex_constraints(i, j, h) for j in range(1, h))
 
             # Self-Overlapping
             if not self.problem.self_overlapping:
@@ -275,7 +301,7 @@ class MonolithicEncoder(BaseEncoder):
 
         return None, res
 
-    def encode_density_constraints(self, h: int):
+    def encode_density_constraints(self, h: int) -> SMTFNode:
         return self.mgr.Implies(
             self.uses_abstact_step(h - 1, h),
             self.mgr.And([self.encode_density_constraint(i) for i in range(1, h)]),

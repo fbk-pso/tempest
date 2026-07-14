@@ -15,7 +15,7 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 
-from typing import OrderedDict
+from collections import OrderedDict
 from unittest import TestCase
 
 from pysmt.environment import get_env
@@ -36,7 +36,7 @@ from tempest.encoders.symbol_encoder import SymbolEncoder
 
 
 class TestConverter(TestCase):
-    def test_converter(self):
+    def test_converter(self) -> None:
 
         # problem definition
         problem = Problem("counter")
@@ -296,7 +296,7 @@ class TestConverter(TestCase):
                         f"i: {i}; w: {w}; expression: {expression}; converted_expression: {converted_exp}; oracle_str: {oracle_str}; expected_str: {expected_str}",
                     )
 
-    def _convert_expected_str(self, expected_str: str, i: int, w: int):
+    def _convert_expected_str(self, expected_str: str, i: int, w: int) -> str:
         expected_str = expected_str.replace("{i}", str(i))
         expected_str = expected_str.replace("{w}", str(w))
         return expected_str

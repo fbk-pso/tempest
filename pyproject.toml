@@ -48,7 +48,7 @@ target-version = "py310"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I"]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF", "PERF", "PIE"]
 ignore = [
     "E501",  # line-too-long: handled by the formatter; the rest are unsplittable
     "E731",  # lambda-assignment: the small inline lambdas here read fine
@@ -57,14 +57,27 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # __init__.py re-exports the package API, so imports look "unused" (F401).
 "__init__.py" = ["F401"]
+# The encoders memoize symbol/formula construction on purpose: cache lifetime
+# equals encoder lifetime, and the memoization is load-bearing (e.g.
+# SymbolEncoder.chain_var bumps a counter, so a re-call must return the
+# memoized symbol, not build a new one). B019's leak warning doesn't apply.
+"src/tempest/encoders/*" = ["B019"]
 
 [tool.ruff.format]
 
 [tool.mypy]
 check_untyped_defs = true
+disallow_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
 disable_error_code = ["no-redef"]
-files = ["src/tempest"]
+files = ["src/tempest", "tests", "ci"]
 
 [[tool.mypy.overrides]]
 module = ["unified_planning.*", "pysmt.*"]
+ignore_missing_imports = true
+
+# Benchmark problem modules; the tests put benchmarks/ on sys.path themselves.
+[[tool.mypy.overrides]]
+module = ["test_cases.*"]
 ignore_missing_imports = true

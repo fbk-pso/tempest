@@ -17,8 +17,9 @@
 
 import os
 import sys
+from collections.abc import Iterator
 from fractions import Fraction
-from typing import Iterator, Tuple
+from typing import Any
 from unittest import TestCase
 
 from unified_planning.io import PDDLReader
@@ -44,9 +45,8 @@ sys.path.insert(0, _benchmarks_dir)
 
 
 class TestHorizon(TestCase):
-    def test_horizon(self):
-
-        engines_and_params = [
+    def test_horizon(self) -> None:
+        engines_and_params: list[tuple[str, dict[str, Any]]] = [
             ("tempest", {"incremental": True, "solver_name": "z3"}),
             ("tempest", {"incremental": False, "solver_name": "z3"}),
             ("tempest", {"incremental": True, "solver_name": "optimsat"}),
@@ -307,7 +307,7 @@ class TestHorizon(TestCase):
                         result.plan, f"{problem.name}, {min_correct_horizon}, {params}"
                     )
 
-    def _get_problems_with_min_horizon(self) -> Iterator[Tuple[Problem, int]]:
+    def _get_problems_with_min_horizon(self) -> Iterator[tuple[Problem, int]]:
         problem_functions = [
             self._basic_counter,
             self._move_ball,
@@ -322,14 +322,13 @@ class TestHorizon(TestCase):
         ]
 
         for problem_func in problem_functions:
-            for problem, min_correct_horizon in problem_func():
-                yield problem, min_correct_horizon
+            yield from problem_func()
         # for problem, min_correct_horizon in self._move_ball():
         #     yield problem, min_correct_horizon
         # for problem, min_correct_horizon in self._majsp_1_1_2_1():
         #     yield problem, min_correct_horizon
 
-    def _basic_counter(self) -> Iterator[Tuple[Problem, int]]:
+    def _basic_counter(self) -> Iterator[tuple[Problem, int]]:
         base_problem = Problem("counter")
         counter = base_problem.add_fluent("counter", IntType(), default_initial_value=0)
 
@@ -391,7 +390,7 @@ class TestHorizon(TestCase):
             min_correct_horizon = 2 + 2 * i
             yield problem, min_correct_horizon
 
-    def _move_ball(self):
+    def _move_ball(self) -> Iterator[tuple[Problem, int]]:
         base_problem = Problem("move ball")
         Ball = UserType("Ball")
         Location = UserType("Location")
@@ -447,21 +446,21 @@ class TestHorizon(TestCase):
         min_correct_horizon = 8
         yield problem, min_correct_horizon
 
-    def _majsp_1_1_2_1(self):
+    def _majsp_1_1_2_1(self) -> Iterator[tuple[Problem, int]]:
         from test_cases.majsp import get_problems
 
         problem = get_problems(1, 1, 2, 1)
         min_correct_horizon = 7
         yield problem, min_correct_horizon
 
-    def _majsp_simplified_1_1_2_1(self):
+    def _majsp_simplified_1_1_2_1(self) -> Iterator[tuple[Problem, int]]:
         from test_cases.majsp_simplified import get_problems
 
         problem = get_problems(1, 1, 2, 1)
         min_correct_horizon = 7
         yield problem, min_correct_horizon
 
-    def _match_action_costs_v2(self):
+    def _match_action_costs_v2(self) -> Iterator[tuple[Problem, int]]:
         pddl_files_dir = os.path.join(
             _benchmarks_dir, "test_cases", "match_action_costs_V2", "pddl_files"
         )
@@ -474,7 +473,7 @@ class TestHorizon(TestCase):
         min_correct_horizon = 6
         yield problem, min_correct_horizon
 
-    def _match_makespan_v2(self):
+    def _match_makespan_v2(self) -> Iterator[tuple[Problem, int]]:
         pddl_files_dir = os.path.join(
             _benchmarks_dir, "test_cases", "match_makespan_V2", "pddl_files"
         )
@@ -485,7 +484,7 @@ class TestHorizon(TestCase):
         min_correct_horizon = 6
         yield problem, min_correct_horizon
 
-    def _optional_goals(self):
+    def _optional_goals(self) -> Iterator[tuple[Problem, int]]:
         pddl_files_dir = os.path.join(
             _benchmarks_dir, "test_cases", "optional_goals", "pddl_files"
         )
@@ -496,14 +495,14 @@ class TestHorizon(TestCase):
         min_correct_horizon = 3
         yield problem, min_correct_horizon
 
-    def _painter_2_1(self):
+    def _painter_2_1(self) -> Iterator[tuple[Problem, int]]:
         from test_cases.painter import get_problems
 
         problem = get_problems(2, 1)
         min_correct_horizon = 8
         yield problem, min_correct_horizon
 
-    def _floor_tile_1_2_1(self):
+    def _floor_tile_1_2_1(self) -> Iterator[tuple[Problem, int]]:
         for folder_name in ["action_costs", "makespan"]:
             pddl_files_dir = os.path.join(
                 _benchmarks_dir, "test_cases", "floor_tile", folder_name, "pddl_files"
@@ -515,7 +514,7 @@ class TestHorizon(TestCase):
             min_correct_horizon = 6
             yield problem, min_correct_horizon
 
-    def _match_cellar(self):
+    def _match_cellar(self) -> Iterator[tuple[Problem, int]]:
         for folder_name in ["action_costs", "makespan"]:
             pddl_files_dir = os.path.join(
                 _benchmarks_dir, "test_cases", "matchcellar", folder_name, "pddl_files"
