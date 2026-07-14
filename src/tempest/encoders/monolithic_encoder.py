@@ -19,17 +19,33 @@ from collections.abc import Iterable
 from itertools import chain
 from typing import Any
 
-from unified_planning.model import DurativeAction, Fluent, FNode, InstantaneousAction
+from pysmt.fnode import FNode as SMTFNode
+from unified_planning.model import (
+    Action,
+    DurativeAction,
+    Fluent,
+    FNode,
+    InstantaneousAction,
+    TimeInterval,
+)
 
 from tempest.encoders.base_encoder import BaseEncoder
 
 
 class MonolithicEncoder(BaseEncoder):
-    def condition_sat_in_abstract_step(self, action, it, c, w, h):
+    def condition_sat_in_abstract_step(
+        self,
+        action: Action | None,
+        it: TimeInterval,
+        c: FNode,
+        w: int | None,
+        h: int,
+    ) -> SMTFNode:
         last_concrete_step_time = self.t(h - 1)
         if action is None:
             smt_tp_1 = self.encode_problem_tp(it.lower, h)
         else:
+            assert w is not None
             smt_tp_1 = self.encode_tp(action, it.lower, w, h)
         if it.is_left_open():
             start_condition_after_last_concrete_step = self.mgr.LE(
@@ -48,7 +64,9 @@ class MonolithicEncoder(BaseEncoder):
             self.mgr.Or(condition_last_concrete_step, condition_abstract_step),
         )
 
-    def encode_durative_action(self, action: DurativeAction, i: int, h: int):
+    def encode_durative_action(
+        self, action: DurativeAction, i: int, h: int
+    ) -> SMTFNode:
         terms = []
 
         # Action duration constraints
@@ -100,7 +118,7 @@ class MonolithicEncoder(BaseEncoder):
     def encode_step_zero(self) -> Any | None:
         return None
 
-    def encode_timed_goals(self, h: int, optimal: bool):
+    def encode_timed_goals(self, h: int, optimal: bool) -> SMTFNode:
         res = []
         for it, lg in self.problem.timed_goals.items():
             g = self.em.And(lg)
@@ -125,7 +143,7 @@ class MonolithicEncoder(BaseEncoder):
 
     def encode_fluent_mod_formula(
         self, fluent: Fluent, fluent_exp: FNode | None, h: int
-    ):
+    ) -> SMTFNode:
         assert not (self.ground_abstract_step and self.param_getter.get(fluent_exp))
         res = []
         abstract_fluent_touchers = self.abstract_step_touchers.get(fluent, None)
@@ -283,7 +301,7 @@ class MonolithicEncoder(BaseEncoder):
 
         return None, res
 
-    def encode_density_constraints(self, h: int):
+    def encode_density_constraints(self, h: int) -> SMTFNode:
         return self.mgr.Implies(
             self.uses_abstact_step(h - 1, h),
             self.mgr.And([self.encode_density_constraint(i) for i in range(1, h)]),

@@ -28,6 +28,7 @@ import pysmt.environment
 import pysmt.solvers.solver
 import pysmt.typing
 import unified_planning as up
+from pysmt.fnode import FNode as SMTFNode
 from pysmt.optimization.goal import MaxSMTGoal, MinimizationGoal
 from unified_planning.engines import CompilationKind
 from unified_planning.exceptions import UPNoSuitableEngineAvailableException
@@ -169,7 +170,7 @@ class BaseEncoder(ABC):
                 )
         return valid_actions
 
-    def converter(self, i: int, w: int | None, scope: Action | None):
+    def converter(self, i: int, w: int | None, scope: Action | None) -> SMTConverter:
         key = (None, i, w) if scope is None else (scope.name, i, w)
         try:
             return self.converters[key]
@@ -193,29 +194,29 @@ class BaseEncoder(ABC):
         i: int,
         w: int | None = None,
         scope: Action | None = None,
-    ):
+    ) -> SMTFNode:
         if w is None:
             w = i
         return self.converter(i, w, scope).to_smt(phi)
 
-    def t(self, i: int):
+    def t(self, i: int) -> SMTFNode:
         if i == 0:
             return self.mgr.Real(-1)
         return self.symenc.t(i)
 
-    def t_a(self, a: Action, h: int | None):
+    def t_a(self, a: Action, h: int | None) -> SMTFNode:
         return self.symenc.t_a(a, h)
 
-    def t_last(self):
+    def t_last(self) -> SMTFNode:
         return self.symenc.t_last()
 
-    def a(self, action: Action, i: int):
+    def a(self, action: Action, i: int) -> SMTFNode:
         return self.symenc.action(action, i)
 
-    def param(self, action: Action, parameter: Parameter, i):
+    def param(self, action: Action, parameter: Parameter, i: int) -> SMTFNode:
         return self.symenc.parameter(action, parameter, i)
 
-    def dur(self, action: Action, i: int):
+    def dur(self, action: Action, i: int) -> SMTFNode:
         return self.symenc.duration(action, i)
 
     def encode_tp(
@@ -225,7 +226,7 @@ class BaseEncoder(ABC):
         i: int,
         h: int | None,
         abstract: bool = False,
-    ):
+    ) -> SMTFNode:
         smt_t = (
             self.t(i)
             if (h is None and not abstract) or (h is not None and i < h)
@@ -241,14 +242,16 @@ class BaseEncoder(ABC):
                 tp = self.mgr.Plus(smt_t, smt_dur)
         return tp
 
-    def encode_problem_tp(self, t: Timing, h: int | None):
+    def encode_problem_tp(self, t: Timing, h: int | None) -> SMTFNode:
         if t.is_from_start():
             return self.mgr.Real(t.delay)
         else:
             assert t.delay == 0
             return self.t_last() if h is None else self.t(h - 1)
 
-    def encode_effect(self, action: Action | None, e: Effect, i: int, w: int):
+    def encode_effect(
+        self, action: Action | None, e: Effect, i: int, w: int
+    ) -> SMTFNode:
         # The fluent is assigned in the current state (i)
         smt_f = self.to_smt(e.fluent, i, w, scope=action)
         # The value expression is evaluated in the previous state (i-1)
@@ -273,7 +276,7 @@ class BaseEncoder(ABC):
         i: int,
         w: int,
         h: int | None,
-    ):
+    ) -> SMTFNode:
         if action is None:
             assert t.is_from_start()
             smt_tp = self.encode_problem_tp(t, None)
@@ -291,7 +294,7 @@ class BaseEncoder(ABC):
         i: int,
         w: int,
         h: int | None,
-    ):
+    ) -> SMTFNode:
         if action is None:
             smt_tp_1 = self.encode_problem_tp(it.lower, h)
             smt_tp_2 = self.encode_problem_tp(it.upper, h)
@@ -361,7 +364,7 @@ class BaseEncoder(ABC):
         else:
             return lower.delay <= upper.delay
 
-    def encode_action_duration(self, action: DurativeAction, i: int):
+    def encode_action_duration(self, action: DurativeAction, i: int) -> SMTFNode:
         smt_dur = self.dur(action, i)
         duration = action.duration
         smt_lower = self.to_smt(duration.lower, i - 1, i, scope=action)
@@ -377,7 +380,9 @@ class BaseEncoder(ABC):
             terms.append(self.mgr.LE(smt_dur, smt_upper))
         return self.mgr.And(terms)
 
-    def encode_instantaneous_action(self, action: InstantaneousAction, i: int):
+    def encode_instantaneous_action(
+        self, action: InstantaneousAction, i: int
+    ) -> SMTFNode:
         smt_a = self.a(action, i)
 
         # Encode preconditions
@@ -387,7 +392,7 @@ class BaseEncoder(ABC):
 
         return self.mgr.Implies(smt_a, self.mgr.And(terms))
 
-    def encode_frame_axiom(self, i: int, h: int | None):
+    def encode_frame_axiom(self, i: int, h: int | None) -> SMTFNode:
         res = []
         for f in self.problem.fluents:
             if f in self.static_fluents:
@@ -478,7 +483,7 @@ class BaseEncoder(ABC):
         a_effects: Iterable[Effect],
         b_precond: Iterable[FNode],
         b_effects: Iterable[Effect],
-    ):
+    ) -> list[tuple[FNode, FNode]]:
         a_p: dict[Any, list] = {}
         for p in a_precond:
             for x in self._get_sorted_free_vars(p):
@@ -489,7 +494,7 @@ class BaseEncoder(ABC):
             for x in self._get_sorted_free_vars(p):
                 b_p.setdefault(x.fluent(), []).append(x)
 
-        def add_red_fluents(p, effect):
+        def add_red_fluents(p: dict[Any, list], effect: Effect) -> None:
             for x in chain(
                 *map(
                     self._get_sorted_free_vars,
@@ -518,7 +523,7 @@ class BaseEncoder(ABC):
 
         return clauses
 
-    def encode_non_self_overlapping(self, i: int):
+    def encode_non_self_overlapping(self, i: int) -> SMTFNode:
         res = []
         for act in self.actions:
             if not isinstance(act, DurativeAction):
@@ -548,7 +553,7 @@ class BaseEncoder(ABC):
                 )
         return self.mgr.And(res)
 
-    def initial_state(self):
+    def initial_state(self) -> SMTFNode:
         res = []
         for f, v in self.problem.initial_values.items():
             smt_f = self.to_smt(f, 0)
@@ -639,7 +644,7 @@ class BaseEncoder(ABC):
 
         return events
 
-    def _get_mutex_couples(self):
+    def _get_mutex_couples(self) -> list[tuple]:
         mutex_couples: list[tuple] = []
         events = list(self._get_events())
         for i, event_a in enumerate(events):
@@ -677,10 +682,10 @@ class BaseEncoder(ABC):
                 fluent_dict.setdefault(e.fluent, []).append((None, t, e))
         return touchers
 
-    def encode_mutex_constraints(self, i: int, j: int, h: int | None):
+    def encode_mutex_constraints(self, i: int, j: int, h: int | None) -> SMTFNode:
         res = []
 
-        def encode_timing(action, timing, step):
+        def encode_timing(action: Action | None, timing: Timing, step: int) -> SMTFNode:
             if isinstance(action, InstantaneousAction):
                 assert timing.is_from_start() and not timing.is_global()
                 return self.t(step)
@@ -702,7 +707,7 @@ class BaseEncoder(ABC):
                 ((action_b, timing_b),) = mutex_element
                 mutex_conds = []
 
-            def is_global_end(timing):
+            def is_global_end(timing: Timing) -> bool:
                 return timing.is_global() and timing.is_from_end()
 
             if (
@@ -771,7 +776,7 @@ class BaseEncoder(ABC):
 
         return self.mgr.And(res)
 
-    def encode_increasing_time(self, i):
+    def encode_increasing_time(self, i: int) -> SMTFNode:
         if i == 1:
             # First valid step must be >= 0
             return self.mgr.LE(self.mgr.Real(0), self.t(i))
@@ -783,14 +788,16 @@ class BaseEncoder(ABC):
         )
 
     @cache
-    def _fluent_mod(self, fluent: Fluent, fluent_exp: FNode | None):
+    def _fluent_mod(self, fluent: Fluent, fluent_exp: FNode | None) -> SMTFNode:
         naming = fluent if fluent_exp is None else fluent_exp
         fluent_mod_var = self.mgr.FreshSymbol(template=f"mod_{naming}%d")
         self.fluent_mod_var[fluent_mod_var] = fluent, fluent_exp
         return fluent_mod_var
 
     @cache
-    def fluent_mod(self, fluent_exp: FNode, a: Action | None, w: int | None):
+    def fluent_mod(
+        self, fluent_exp: FNode, a: Action | None, w: int | None
+    ) -> SMTFNode:
         fluent_parameters = self._get_sorted_parameters(fluent_exp, a)
         if not self.ground_abstract_step:
             return self._fluent_mod(fluent_exp.fluent(), None)
@@ -831,7 +838,9 @@ class BaseEncoder(ABC):
             items_list.append([domain_item(self.problem, type, j) for j in range(size)])
         return tuple(product(*items_list))
 
-    def encode_abstract_instantaneous_action(self, action: InstantaneousAction, h: int):
+    def encode_abstract_instantaneous_action(
+        self, action: InstantaneousAction, h: int
+    ) -> SMTFNode:
         assert self.optimal
         terms = []
         a_h = self.a(action, h)
@@ -848,7 +857,7 @@ class BaseEncoder(ABC):
             )
         return self.mgr.Implies(a_h, self.mgr.And(terms))
 
-    def phi_sched(self, h: int):
+    def phi_sched(self, h: int) -> SMTFNode:
         # This method handles conditions that are in the abstract step. Those conditions
         # either need to be True in the step h-1 OR an effect touching the condition must
         # be scheduled before the condition time
@@ -970,7 +979,7 @@ class BaseEncoder(ABC):
 
         return self.mgr.And(res)
 
-    def encode_density_constraint(self, i: int):
+    def encode_density_constraint(self, i: int) -> SMTFNode:
         t_i = self.t(i)
 
         sub_res = [
@@ -991,7 +1000,7 @@ class BaseEncoder(ABC):
 
         return self.mgr.Or(sub_res)
 
-    def uses_abstact_step(self, i: int, h: int | None):
+    def uses_abstact_step(self, i: int, h: int | None) -> SMTFNode:
         last_concrete_step_time = self.t(i)
         res = [self.to_smt(g, i) for g in self.problem.goals]
 
@@ -1023,7 +1032,7 @@ class BaseEncoder(ABC):
         a: Action | None,
         w: int | None,
         h: int,
-    ):
+    ) -> SMTFNode:
         res = []
         if a is None:
             assert w is None
@@ -1076,7 +1085,9 @@ class BaseEncoder(ABC):
 
         return self.mgr.Or(res)
 
-    def _phi_sched_formula(self, phi_time, fluent_exp: FNode, left_open: bool, h: int):
+    def _phi_sched_formula(
+        self, phi_time: SMTFNode, fluent_exp: FNode, left_open: bool, h: int
+    ) -> SMTFNode:
         res = []
         last_t = self.t(h - 1)
         if self.ground_abstract_step:
@@ -1175,7 +1186,9 @@ class BaseEncoder(ABC):
         fluents = fve.get(exp)
         return tuple(sorted(fluents, key=str))
 
-    def objective_to_minimize(self, i: int, h: int | None):
+    def objective_to_minimize(
+        self, i: int, h: int | None
+    ) -> tuple[list[Any], list[SMTFNode] | None]:
         assert len(self.problem.quality_metrics) < 2, (
             "Problem has more than one quality metric"
         )
@@ -1272,7 +1285,9 @@ class BaseEncoder(ABC):
         else:
             raise NotImplementedError(f"Metric {metric} not supported")
 
-    def _get_max_smt_and_minimization_goal(self, metric, h: int) -> MaxSMTGoal:
+    def _get_max_smt_and_minimization_goal(
+        self, metric: MinimizeActionCosts, h: int
+    ) -> tuple[MaxSMTGoal, MinimizationGoal]:
         max_smt_goal = MaxSMTGoal()
         costs = []
         range_lim = h if self.ground_abstract_step else h + 1

@@ -15,26 +15,35 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 
-from collections.abc import Iterable
+from collections.abc import Hashable, Iterable
 from functools import cache
 from itertools import chain
 from typing import Any
 
-from unified_planning.model import DurativeAction, InstantaneousAction
+from pysmt.fnode import FNode as SMTFNode
+from unified_planning.model import (
+    Action,
+    DurativeAction,
+    Fluent,
+    FNode,
+    InstantaneousAction,
+)
 from unified_planning.model.fluent import get_all_fluent_exp
 
 from tempest.encoders.base_encoder import BaseEncoder
 
 
 class IncrementalEncoder(BaseEncoder):
-    def chain_var(self, action, e, i, w):
+    def chain_var(self, action: Action | None, e: Hashable, i: int, w: int) -> SMTFNode:
         return self.symenc.chain_var(action, e, i, w)
 
     @cache
-    def vcg(self):
+    def vcg(self) -> SMTFNode:
         return self.mgr.FreshSymbol(template="vcg%d")
 
-    def encode_incremental_durative_action(self, action, i):
+    def encode_incremental_durative_action(
+        self, action: DurativeAction, i: int
+    ) -> tuple[SMTFNode, SMTFNode]:
         terms = []
         temp_l = []
 
@@ -125,7 +134,9 @@ class IncrementalEncoder(BaseEncoder):
 
         return self.mgr.And(terms), self.mgr.And(temp_l)
 
-    def encode_abstract_durative_action(self, action, i):
+    def encode_abstract_durative_action(
+        self, action: DurativeAction, i: int
+    ) -> SMTFNode:
         temp_l = []
 
         temp_l.append(
@@ -156,7 +167,9 @@ class IncrementalEncoder(BaseEncoder):
 
         return self.mgr.Implies(self.a(action, i), self.mgr.And(temp_l))
 
-    def encode_fluent_mod_formula_step_zero(self, fluent, fluent_exp):
+    def encode_fluent_mod_formula_step_zero(
+        self, fluent: Fluent, fluent_exp: FNode | None
+    ) -> SMTFNode:
         assert not (self.ground_abstract_step and self.param_getter.get(fluent_exp))
         res = []
         abstract_fluent_touchers = self.abstract_step_touchers.get(fluent, None)
@@ -184,7 +197,9 @@ class IncrementalEncoder(BaseEncoder):
 
         return self.mgr.Or(res)
 
-    def encode_fluent_mod_formula(self, fluent, fluent_exp, i):
+    def encode_fluent_mod_formula(
+        self, fluent: Fluent, fluent_exp: FNode | None, i: int
+    ) -> tuple[SMTFNode, SMTFNode]:
         assert not (self.ground_abstract_step and self.param_getter.get(fluent_exp))
         res = []
         temp_res = []
@@ -306,7 +321,7 @@ class IncrementalEncoder(BaseEncoder):
 
         return self.mgr.And(res)
 
-    def encode_step(self, i):
+    def encode_step(self, i: int) -> tuple[Any, Any]:
         res = []
         temp_res = []
 

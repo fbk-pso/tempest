@@ -19,7 +19,7 @@ import warnings
 from collections.abc import Callable, Iterator
 from fractions import Fraction
 from time import time
-from typing import IO
+from typing import IO, Any
 
 import pysmt
 import pysmt.environment
@@ -48,7 +48,12 @@ credits = Credits(
 class _BaseEngine(up.engines.Engine, up.engines.mixins.OneshotPlannerMixin):
     """Implementation of the base tempest engine."""
 
-    def __init__(self, incremental=True, horizon=None, solver_name=None):
+    def __init__(
+        self,
+        incremental: bool = True,
+        horizon: int | None = None,
+        solver_name: str | None = None,
+    ) -> None:
         up.engines.Engine.__init__(self)
         up.engines.mixins.OneshotPlannerMixin.__init__(self)
         self.horizon = horizon
@@ -97,7 +102,7 @@ class _BaseEngine(up.engines.Engine, up.engines.mixins.OneshotPlannerMixin):
         return base_kind
 
     @staticmethod
-    def get_credits(**kwargs) -> "up.engines.Credits | None":
+    def get_credits(**kwargs: Any) -> "up.engines.Credits | None":
         return credits
 
 
@@ -121,7 +126,7 @@ class TempestEngine(_BaseEngine, up.engines.mixins.AnytimePlannerMixin):
         return False
 
     @staticmethod
-    def get_credits(**kwargs) -> "up.engines.Credits | None":
+    def get_credits(**kwargs: Any) -> "up.engines.Credits | None":
         return credits
 
     def _solve(
@@ -147,7 +152,7 @@ class TempestEngine(_BaseEngine, up.engines.mixins.AnytimePlannerMixin):
         timeout: float | None = None,
         output_stream: IO[str] | None = None,
         warm_start_plan: "up.plans.Plan | None" = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> Iterator["up.engines.results.PlanGenerationResult"]:
         assert isinstance(problem, up.model.Problem)
 
@@ -239,7 +244,9 @@ class TempestEngine(_BaseEngine, up.engines.mixins.AnytimePlannerMixin):
 
 
 class TempestNonIncremental(TempestEngine):
-    def __init__(self, horizon=None, solver_name=None):
+    def __init__(
+        self, horizon: int | None = None, solver_name: str | None = None
+    ) -> None:
         super().__init__(False, horizon, solver_name)
 
 
@@ -248,14 +255,14 @@ class TempestOptimal(_BaseEngine):
 
     def __init__(
         self,
-        incremental=True,
-        horizon=None,
-        solver_name=None,
+        incremental: bool = True,
+        horizon: int | None = None,
+        solver_name: str | None = None,
         ground_abstract_step: bool = True,
         grounder_name: str | None = None,
         sat_before_opt: bool = True,
         secondary_objective: str | None = "weighted",
-    ):
+    ) -> None:
         super().__init__(incremental, horizon, solver_name)
         self.ground_abstract_step = ground_abstract_step
         self.grounder_name = grounder_name
@@ -288,7 +295,7 @@ class TempestOptimal(_BaseEngine):
         return True
 
     @staticmethod
-    def get_credits(**kwargs) -> "up.engines.Credits | None":
+    def get_credits(**kwargs: Any) -> "up.engines.Credits | None":
         return credits
 
     def _solve(
@@ -498,12 +505,12 @@ class TempestOptimalNonIncremental(TempestOptimal):
 
     def __init__(
         self,
-        horizon=None,
-        solver_name=None,
+        horizon: int | None = None,
+        solver_name: str | None = None,
         ground_abstract_step: bool = True,
         grounder_name: str | None = None,
         sat_before_opt: bool = True,
-    ):
+    ) -> None:
         super().__init__(
             False,
             horizon,
@@ -516,20 +523,24 @@ class TempestOptimalNonIncremental(TempestOptimal):
 
 class TempestLiftedAbstractStep(TempestOptimal):
     def __init__(
-        self, incremental=True, horizon=None, solver_name=None, sat_before_opt=True
-    ):
+        self,
+        incremental: bool = True,
+        horizon: int | None = None,
+        solver_name: str | None = None,
+        sat_before_opt: bool = True,
+    ) -> None:
         super().__init__(incremental, horizon, solver_name, False, None, sat_before_opt)
 
 
 class TempestOnlyOMT(TempestOptimal):
     def __init__(
         self,
-        incremental=True,
-        horizon=None,
-        solver_name=None,
-        ground_abstract_step=True,
-        grounder_name=None,
-    ):
+        incremental: bool = True,
+        horizon: int | None = None,
+        solver_name: str | None = None,
+        ground_abstract_step: bool = True,
+        grounder_name: str | None = None,
+    ) -> None:
         super().__init__(
             incremental,
             horizon,
@@ -541,5 +552,10 @@ class TempestOnlyOMT(TempestOptimal):
 
 
 class TempestLiftedAbstractStepOnlyOMT(TempestOptimal):
-    def __init__(self, incremental=True, horizon=None, solver_name=None):
+    def __init__(
+        self,
+        incremental: bool = True,
+        horizon: int | None = None,
+        solver_name: str | None = None,
+    ) -> None:
         super().__init__(incremental, horizon, solver_name, False, None, False)

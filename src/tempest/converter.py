@@ -15,14 +15,31 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 
+from typing import TYPE_CHECKING, Any
+
+import pysmt.environment
 import unified_planning.model.walkers as walkers
+from pysmt.fnode import FNode as SMTFNode
+from unified_planning.model import Action, Fluent, FNode, Object, Problem
 from unified_planning.model.fluent import get_all_fluent_exp
+
+if TYPE_CHECKING:
+    # Runtime import would be circular: base_encoder imports this module.
+    from tempest.encoders.symbol_encoder import SymbolEncoder
 
 
 class SMTConverter(walkers.dag.DagWalker):
     def __init__(
-        self, i, w, symenc, pysmt_env, problem, objects, static_fluents, scope
-    ):
+        self,
+        i: int,
+        w: int | None,
+        symenc: "SymbolEncoder",
+        pysmt_env: pysmt.environment.Environment,
+        problem: Problem,
+        objects: dict[Object, int],
+        static_fluents: set[Fluent],
+        scope: Action | None,
+    ) -> None:
         walkers.dag.DagWalker.__init__(self)
         self.pysmt_env = pysmt_env
         self.i = i
@@ -34,10 +51,10 @@ class SMTConverter(walkers.dag.DagWalker):
         self.objects = objects
         self.scope = scope
 
-    def to_smt(self, expression):
+    def to_smt(self, expression: FNode) -> SMTFNode:
         return self.walk(expression)
 
-    def constant_to_smt(self, expression):
+    def constant_to_smt(self, expression: FNode) -> SMTFNode:
         if expression.is_object_exp():
             va = self.manager.Real(self.objects[expression.object()])
         elif expression.is_bool_constant():
@@ -48,7 +65,9 @@ class SMTConverter(walkers.dag.DagWalker):
             raise NotImplementedError
         return va
 
-    def walk_fluent_exp(self, expression, args):
+    def walk_fluent_exp(
+        self, expression: FNode, args: list[SMTFNode]
+    ) -> SMTFNode | None:
         f = expression.fluent()
         is_static = False
         if f in self.static_fluents:
@@ -86,54 +105,64 @@ class SMTConverter(walkers.dag.DagWalker):
                         res = self.manager.Ite(self.manager.And(conds), then, res)
             return res
 
-    def walk_bool_constant(self, expression, args, **kwargs):
+    def walk_bool_constant(
+        self, expression: FNode, args: list[SMTFNode], **kwargs: Any
+    ) -> SMTFNode:
         return self.manager.Bool(expression.bool_constant_value())
 
-    def walk_int_constant(self, expression, args, **kwargs):
+    def walk_int_constant(
+        self, expression: FNode, args: list[SMTFNode], **kwargs: Any
+    ) -> SMTFNode:
         return self.manager.Real(expression.int_constant_value())
 
-    def walk_real_constant(self, expression, args, **kwargs):
+    def walk_real_constant(
+        self, expression: FNode, args: list[SMTFNode], **kwargs: Any
+    ) -> SMTFNode:
         return self.manager.Real(expression.real_constant_value())
 
-    def walk_param_exp(self, expression, args, **kwargs):
-        assert self.scope is not None
+    def walk_param_exp(
+        self, expression: FNode, args: list[SMTFNode], **kwargs: Any
+    ) -> SMTFNode:
+        assert self.scope is not None and self.w is not None
         return self.symenc.parameter(self.scope, expression.parameter(), self.w)
 
-    def walk_object_exp(self, expression, args, **kwargs):
+    def walk_object_exp(
+        self, expression: FNode, args: list[SMTFNode], **kwargs: Any
+    ) -> SMTFNode:
         return self.manager.Real(self.objects[expression.object()])
 
-    def walk_and(self, expression, args):
+    def walk_and(self, expression: FNode, args: list[SMTFNode]) -> SMTFNode:
         return self.manager.And(args)
 
-    def walk_or(self, expression, args):
+    def walk_or(self, expression: FNode, args: list[SMTFNode]) -> SMTFNode:
         return self.manager.Or(args)
 
-    def walk_not(self, expression, args):
+    def walk_not(self, expression: FNode, args: list[SMTFNode]) -> SMTFNode:
         return self.manager.Not(args[0])
 
-    def walk_iff(self, expression, args):
+    def walk_iff(self, expression: FNode, args: list[SMTFNode]) -> SMTFNode:
         return self.manager.Iff(*args)
 
-    def walk_implies(self, expression, args):
+    def walk_implies(self, expression: FNode, args: list[SMTFNode]) -> SMTFNode:
         return self.manager.Implies(*args)
 
-    def walk_equals(self, expression, args):
+    def walk_equals(self, expression: FNode, args: list[SMTFNode]) -> SMTFNode:
         return self.manager.Equals(*args)
 
-    def walk_le(self, expression, args):
+    def walk_le(self, expression: FNode, args: list[SMTFNode]) -> SMTFNode:
         return self.manager.LE(*args)
 
-    def walk_lt(self, expression, args):
+    def walk_lt(self, expression: FNode, args: list[SMTFNode]) -> SMTFNode:
         return self.manager.LT(*args)
 
-    def walk_plus(self, expression, args):
+    def walk_plus(self, expression: FNode, args: list[SMTFNode]) -> SMTFNode:
         return self.manager.Plus(args)
 
-    def walk_minus(self, expression, args):
+    def walk_minus(self, expression: FNode, args: list[SMTFNode]) -> SMTFNode:
         return self.manager.Minus(*args)
 
-    def walk_times(self, expression, args):
+    def walk_times(self, expression: FNode, args: list[SMTFNode]) -> SMTFNode:
         return self.manager.Times(args)
 
-    def walk_div(self, expression, args):
+    def walk_div(self, expression: FNode, args: list[SMTFNode]) -> SMTFNode:
         return self.manager.Div(*args)
