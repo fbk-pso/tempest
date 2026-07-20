@@ -144,7 +144,9 @@ class MonolithicEncoder(BaseEncoder):
     def encode_fluent_mod_formula(
         self, fluent: Fluent, fluent_exp: FNode | None, h: int
     ) -> SMTFNode:
-        assert not (self.ground_abstract_step and self.param_getter.get(fluent_exp))
+        assert fluent_exp is None or not (
+            self.ground_abstract_step and self.param_getter.get(fluent_exp)
+        )
         res = []
         abstract_fluent_touchers = self.abstract_step_touchers.get(fluent, None)
         if abstract_fluent_touchers is None:

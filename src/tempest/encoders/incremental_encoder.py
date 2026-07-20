@@ -59,8 +59,8 @@ class IncrementalEncoder(BaseEncoder):
         # Action conditions
         for it, lc in action.conditions.items():
             c = self.em.And(lc)
-            ev = (it, c)
-            conjunction.append(self.chain_var(action, ev, i, i))
+            cond_ev = (it, c)
+            conjunction.append(self.chain_var(action, cond_ev, i, i))
             for w in range(1, i + 1):
                 if self.optimal:
                     smt_tp_1 = self.encode_tp(action, it.lower, w, None)
@@ -79,7 +79,7 @@ class IncrementalEncoder(BaseEncoder):
                     )
                     temp_l.append(
                         self.mgr.Implies(
-                            self.chain_var(action, ev, i + 1, w),
+                            self.chain_var(action, cond_ev, i + 1, w),
                             self.mgr.Implies(
                                 start_condition_after_last_concrete_step,
                                 self.mgr.Or(
@@ -92,41 +92,45 @@ class IncrementalEncoder(BaseEncoder):
                 else:
                     temp_l.append(
                         self.mgr.Implies(
-                            self.chain_var(action, ev, i + 1, w), self.mgr.Bool(True)
+                            self.chain_var(action, cond_ev, i + 1, w),
+                            self.mgr.Bool(True),
                         )
                     )
                 formula = self.encode_condition_or_goal(action, it, c, i, w, None)
                 terms.append(
                     self.mgr.Implies(
-                        self.chain_var(action, ev, i, w),
-                        self.mgr.And(formula, self.chain_var(action, ev, i + 1, w)),
+                        self.chain_var(action, cond_ev, i, w),
+                        self.mgr.And(
+                            formula, self.chain_var(action, cond_ev, i + 1, w)
+                        ),
                     )
                 )
 
         # Action effects
         for t, le in action.effects.items():
-            ev = (t, tuple(le))
-            conjunction.append(self.chain_var(action, ev, i, i))
+            eff_ev = (t, tuple(le))
+            conjunction.append(self.chain_var(action, eff_ev, i, i))
             for w in range(1, i + 1):
                 if self.optimal:
                     smt_tp_1 = self.encode_tp(action, t, w, None)
                     temp_l.append(
                         self.mgr.Implies(
-                            self.chain_var(action, ev, i + 1, w),
+                            self.chain_var(action, eff_ev, i + 1, w),
                             self.mgr.GT(smt_tp_1, self.t_last()),
                         )
                     )
                 else:
                     temp_l.append(
                         self.mgr.Implies(
-                            self.chain_var(action, ev, i + 1, w), self.mgr.Bool(False)
+                            self.chain_var(action, eff_ev, i + 1, w),
+                            self.mgr.Bool(False),
                         )
                     )
                 formula = self.encode_effects(action, t, le, i, w, None)
                 terms.append(
                     self.mgr.Implies(
-                        self.chain_var(action, ev, i, w),
-                        self.mgr.Or(formula, self.chain_var(action, ev, i + 1, w)),
+                        self.chain_var(action, eff_ev, i, w),
+                        self.mgr.Or(formula, self.chain_var(action, eff_ev, i + 1, w)),
                     )
                 )
 
@@ -170,7 +174,9 @@ class IncrementalEncoder(BaseEncoder):
     def encode_fluent_mod_formula_step_zero(
         self, fluent: Fluent, fluent_exp: FNode | None
     ) -> SMTFNode:
-        assert not (self.ground_abstract_step and self.param_getter.get(fluent_exp))
+        assert fluent_exp is None or not (
+            self.ground_abstract_step and self.param_getter.get(fluent_exp)
+        )
         res = []
         abstract_fluent_touchers = self.abstract_step_touchers.get(fluent, None)
         if abstract_fluent_touchers is None:
@@ -200,7 +206,9 @@ class IncrementalEncoder(BaseEncoder):
     def encode_fluent_mod_formula(
         self, fluent: Fluent, fluent_exp: FNode | None, i: int
     ) -> tuple[SMTFNode, SMTFNode]:
-        assert not (self.ground_abstract_step and self.param_getter.get(fluent_exp))
+        assert fluent_exp is None or not (
+            self.ground_abstract_step and self.param_getter.get(fluent_exp)
+        )
         res = []
         temp_res = []
         abstract_fluent_touchers = self.abstract_step_touchers.get(fluent, None)
