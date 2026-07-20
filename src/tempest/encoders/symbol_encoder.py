@@ -16,6 +16,7 @@
 #
 
 from collections.abc import Hashable
+from fractions import Fraction
 from functools import cache
 
 import pysmt
@@ -32,6 +33,7 @@ from unified_planning.model import (
     Parameter,
     Type,
 )
+from unified_planning.model.types import _IntType, _RealType
 
 
 class SymbolEncoder:
@@ -89,12 +91,17 @@ class SymbolEncoder:
         return res
 
     def add_type_constraints(
-        self, symbol: SMTFNode, type: Type, lb: int | None, ub: int | None, i: int
+        self,
+        symbol: SMTFNode,
+        type: Type,
+        lb: int | Fraction | None,
+        ub: int | Fraction | None,
+        i: int,
     ) -> None:
         self.type_constraints.setdefault(i, set())
         if type.is_user_type():
             # A user type always yields concrete integer bounds (see type_to_smt).
-            assert lb is not None and ub is not None
+            assert isinstance(lb, int) and isinstance(ub, int)
             terms = [
                 self.mgr.Equals(symbol, self.mgr.Real(p)) for p in range(lb, ub + 1)
             ]
@@ -105,10 +112,15 @@ class SymbolEncoder:
             if ub is not None:
                 self.type_constraints[i].add(self.mgr.LE(symbol, self.mgr.Real(ub)))
 
-    def type_to_smt(self, type: Type) -> tuple[PySMTType, int | None, int | None]:
+    def type_to_smt(
+        self, type: Type
+    ) -> tuple[PySMTType, int | Fraction | None, int | Fraction | None]:
         if type.is_bool_type():
             return pysmt.typing.BOOL, None, None
         elif type.is_int_type() or type.is_real_type():
+            # lower_bound/upper_bound live on the _IntType/_RealType subclasses,
+            # not the Type base; the is_*_type guards above ensure we have one.
+            assert isinstance(type, (_IntType, _RealType))
             lb, ub = type.lower_bound, type.upper_bound
             return pysmt.typing.REAL, lb, ub
         elif type.is_user_type():

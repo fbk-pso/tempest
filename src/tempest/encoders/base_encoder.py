@@ -21,7 +21,7 @@ from collections.abc import Iterable
 from fractions import Fraction
 from functools import cache
 from itertools import chain, product
-from typing import Any
+from typing import Any, cast
 
 import pysmt
 import pysmt.environment
@@ -47,6 +47,7 @@ from unified_planning.model import (
     TimeInterval,
     Timing,
 )
+from unified_planning.model.expression import Expression
 from unified_planning.model.fluent import get_all_fluent_exp
 from unified_planning.model.types import domain_item, domain_size
 from unified_planning.model.walkers import AnyGetter, Simplifier
@@ -84,7 +85,7 @@ class BaseEncoder(ABC):
         self.actions = self._valid_actions(problem)
         self.epsilon = epsilon
         self.simplifier = Simplifier(problem.environment, problem)
-        self.param_getter = AnyGetter(lambda x: x.is_parameter_exp())
+        self.param_getter: AnyGetter[FNode] = AnyGetter(lambda x: x.is_parameter_exp())
         self.em = self.problem.environment.expression_manager
         self.pysmt_env = pysmt_env
         self.mgr = self.pysmt_env.formula_manager
@@ -398,8 +399,8 @@ class BaseEncoder(ABC):
             if f in self.static_fluents:
                 continue
             for f_exp in get_all_fluent_exp(self.problem, f):
-                smt_f0 = self.symenc.fluent(f_exp.fluent(), f_exp.args, i - 1)
-                smt_f1 = self.symenc.fluent(f_exp.fluent(), f_exp.args, i)
+                smt_f0 = self.symenc.fluent(f_exp.fluent(), tuple(f_exp.args), i - 1)
+                smt_f1 = self.symenc.fluent(f_exp.fluent(), tuple(f_exp.args), i)
                 eq = self.mgr.EqualsOrIff(smt_f0, smt_f1)
                 cond = self.mgr.Not(
                     eq
@@ -408,6 +409,7 @@ class BaseEncoder(ABC):
                 fluent_dict = self.touchers.get(f, {})
                 for a, t, e in chain(*fluent_dict.values()):
                     if a is None:  # Timed effect
+                        assert t is not None
                         conj = [
                             self.mgr.Equals(self.t(i), self.encode_problem_tp(t, h))
                         ]
@@ -813,7 +815,9 @@ class BaseEncoder(ABC):
         ):
             sub_res = []
             assignments = dict(zip(fluent_parameters, parameters_value, strict=True))
-            ground_fluent_exp = fluent_exp.substitute(assignments)
+            ground_fluent_exp = fluent_exp.substitute(
+                cast(dict[Expression, Expression], assignments)
+            )
             sub_res.append(
                 self._fluent_mod(ground_fluent_exp.fluent(), ground_fluent_exp)
             )
@@ -893,7 +897,9 @@ class BaseEncoder(ABC):
 
         # Handles Durative Actions that started in a concrete step but still have to end
         # in the abstract step
-        for a in filter(lambda a: isinstance(a, DurativeAction), self.actions):
+        for a in self.actions:
+            if not isinstance(a, DurativeAction):
+                continue
             for s in range(1, h):
                 sub_res = []
                 for interval, cl in a.conditions.items():
@@ -1035,7 +1041,7 @@ class BaseEncoder(ABC):
     ) -> SMTFNode:
         res = []
         if a is None:
-            assert w is None
+            assert w is None and t is not None
             phi_time = self.encode_problem_tp(t, h)
         elif t is None:
             assert isinstance(a, InstantaneousAction) and w is not None
@@ -1072,7 +1078,9 @@ class BaseEncoder(ABC):
                             )
                         )
                     parameters_equality = self.mgr.And(p_eq)
-                    ground_fluent_exp = fluent_exp.substitute(assignments)
+                    ground_fluent_exp = fluent_exp.substitute(
+                        cast(dict[Expression, Expression], assignments)
+                    )
                     res.append(
                         self.mgr.And(
                             parameters_equality,
@@ -1108,6 +1116,7 @@ class BaseEncoder(ABC):
                 # if the action is durative, it might have started in the concrete steps and still
                 # be relevant in the abstract steps (for example it still has to end)
                 # TODO possible improvements?
+                assert t is not None  # durative-action effect timings are set
                 parameters_assignment = {}
                 lifted_a = b
                 if self.ground_abstract_step:
@@ -1154,6 +1163,7 @@ class BaseEncoder(ABC):
                 h_step_formula = [self.a(b, h)]
                 e_h_time = self.t_a(b, h) if t is None else self.encode_tp(b, t, h, h)
             else:  # timed effect
+                assert t is not None
                 e_h_time = self.encode_problem_tp(t, h)
             h_step_formula.append(
                 self.mgr.LE(
@@ -1255,7 +1265,7 @@ class BaseEncoder(ABC):
                 raise ValueError(
                     f"Secondary objective {self.secondary_objective} unknown"
                 )
-        elif metric.is_minimize_action_costs():
+        elif isinstance(metric, MinimizeActionCosts):
             max_smt_goal, min_goal = self._get_max_smt_and_minimization_goal(
                 metric, i + 1
             )
@@ -1318,9 +1328,11 @@ class BaseEncoder(ABC):
         # The cost of the action in the abstract step must be added
         if self.ground_abstract_step:
             grounded_metric = self.abstract_step_metrics[0]
-            assert grounded_metric.is_minimize_action_costs()
+            assert isinstance(grounded_metric, MinimizeActionCosts)
             for a in self.abstract_step_actions:
-                cost = self.simplifier.simplify(grounded_metric.get_action_cost(a))
+                action_cost = grounded_metric.get_action_cost(a)
+                assert action_cost is not None
+                cost = self.simplifier.simplify(action_cost)
                 weight = cost.constant_value()
                 costs.append(
                     self.mgr.Ite(self.a(a, h), self.mgr.Real(weight), self.mgr.Real(0))
@@ -1340,7 +1352,9 @@ class BaseEncoder(ABC):
         # One important note is that this method does not generate every possible grounding of
         # the action, but only grounds the parameters that are actually involved in the cost
         assert isinstance(metric, MinimizeActionCosts)
-        cost = self.simplifier.simplify(metric.get_action_cost(action))
+        action_cost = metric.get_action_cost(action)
+        assert action_cost is not None
+        cost = self.simplifier.simplify(action_cost)
         if cost.is_constant():  # cost does not depend on parameters
             return [({}, cost)]
         res = []
@@ -1349,7 +1363,9 @@ class BaseEncoder(ABC):
             cost_parameters
         ):
             assignments = dict(zip(cost_parameters, parameters_value, strict=True))
-            grounded_cost = self.simplifier.simplify(cost.substitute(assignments))
+            grounded_cost = self.simplifier.simplify(
+                cost.substitute(cast(dict[Expression, Expression], assignments))
+            )
             assert grounded_cost.is_constant(), (
                 f"Non constant expression detected in ActionCosts: {action.name}, {metric.get_action_cost(action)}"
             )

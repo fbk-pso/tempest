@@ -74,7 +74,7 @@ disable_error_code = ["no-redef"]
 files = ["src/tempest", "tests", "ci"]
 
 [[tool.mypy.overrides]]
-module = ["unified_planning.*", "pysmt.*"]
+module = ["pysmt.*"]
 ignore_missing_imports = true
 
 # Benchmark problem modules; the tests put benchmarks/ on sys.path themselves.
