@@ -111,6 +111,12 @@ class SymbolEncoder:
                 self.type_constraints[i].add(self.mgr.GE(symbol, self.mgr.Real(lb)))
             if ub is not None:
                 self.type_constraints[i].add(self.mgr.LE(symbol, self.mgr.Real(ub)))
+            if type.is_int_type():
+                # Symbols stay REAL so the arithmetic is untouched; '#' never occurs in other symbol names.
+                aux = self.mgr.Symbol(f"{symbol.symbol_name()}#int", pysmt.typing.INT)
+                self.type_constraints[i].add(
+                    self.mgr.Equals(symbol, self.mgr.ToReal(aux))
+                )
 
     def type_to_smt(
         self, type: Type

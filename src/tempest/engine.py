@@ -24,6 +24,7 @@ from typing import IO, Any
 import pysmt
 import pysmt.environment
 import unified_planning as up
+from pysmt.logics import QF_LIRA  # an object: pysmt cannot resolve the name "QF_LIRA"
 from unified_planning.engines import (
     Credits,
     PlanGenerationResult,
@@ -173,7 +174,7 @@ class TempestEngine(_BaseEngine, up.engines.mixins.AnytimePlannerMixin):
         is_in_timeout: bool = False
         plan_found = False
 
-        with pysmt_env.factory.Solver(name=self.solver_name, logic="QF_LRA") as smt:
+        with pysmt_env.factory.Solver(name=self.solver_name, logic=QF_LIRA) as smt:
             step_zero = encoder.encode_step_zero()
             if step_zero is not None:
                 smt.add_assertion(step_zero)
@@ -338,7 +339,7 @@ class TempestOptimal(_BaseEngine):
 
             h = 2
             first_sat_step = 0
-            with pysmt_env.factory.Solver(name=self.solver_name, logic="QF_LRA") as smt:
+            with pysmt_env.factory.Solver(name=self.solver_name, logic=QF_LIRA) as smt:
                 step_zero = encoder.encode_step_zero()
                 if step_zero is not None:
                     smt.add_assertion(step_zero)
@@ -402,7 +403,7 @@ class TempestOptimal(_BaseEngine):
             )
 
         h = 2
-        with pysmt_env.factory.Optimizer(name=self.solver_name, logic="QF_LRA") as omt:
+        with pysmt_env.factory.Optimizer(name=self.solver_name, logic=QF_LIRA) as omt:
             step_zero = encoder.encode_step_zero()
             if step_zero is not None:
                 omt.add_assertion(step_zero)
