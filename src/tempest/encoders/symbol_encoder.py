@@ -86,6 +86,9 @@ class SymbolEncoder:
     @cache
     def parameter(self, action: Action, parameter: Parameter, i: int) -> SMTFNode:
         smt_type, lb, ub = self.type_to_smt(parameter.type)
+        if parameter.type.is_int_type():
+            # Unlike int fluents, which stay integral by induction, parameters are free.
+            smt_type = pysmt.typing.INT
         res = self.mgr.Symbol(f"parameter_{action.name}_{parameter.name}@{i}", smt_type)
         self.add_type_constraints(res, parameter.type, lb, ub, i)
         return res
@@ -107,10 +110,13 @@ class SymbolEncoder:
             ]
             self.type_constraints[i].add(self.mgr.Or(terms))
         else:
+            const = (
+                self.mgr.Int if symbol.symbol_type().is_int_type() else self.mgr.Real
+            )
             if lb is not None:
-                self.type_constraints[i].add(self.mgr.GE(symbol, self.mgr.Real(lb)))
+                self.type_constraints[i].add(self.mgr.GE(symbol, const(lb)))
             if ub is not None:
-                self.type_constraints[i].add(self.mgr.LE(symbol, self.mgr.Real(ub)))
+                self.type_constraints[i].add(self.mgr.LE(symbol, const(ub)))
 
     def type_to_smt(
         self, type: Type
