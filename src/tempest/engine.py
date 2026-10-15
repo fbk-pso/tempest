@@ -24,6 +24,7 @@ from typing import IO, Any
 import pysmt
 import pysmt.environment
 import unified_planning as up
+from pysmt.logics import QF_LIRA, QF_LRA, Logic
 from unified_planning.engines import (
     Credits,
     PlanGenerationResult,
@@ -43,6 +44,17 @@ credits = Credits(
     "Temporal Planning Encoding into Satisfiability Testing",
     "Temporal Planner that encodes temporal planning problems into SAT/SMT formulations",
 )
+
+
+def _logic(problem: "up.model.Problem") -> Logic:
+    # Only int action parameters are INT symbols; int fluents stay REAL.
+    kind = problem.kind
+    if (
+        kind.has_bounded_int_action_parameters()
+        or kind.has_unbounded_int_action_parameters()
+    ):
+        return QF_LIRA
+    return QF_LRA
 
 
 class _BaseEngine(up.engines.Engine, up.engines.mixins.OneshotPlannerMixin):
@@ -95,6 +107,8 @@ class _BaseEngine(up.engines.Engine, up.engines.mixins.OneshotPlannerMixin):
         base_kind.set_parameters("BOUNDED_INT_FLUENT_PARAMETERS")
         base_kind.set_parameters("BOOL_ACTION_PARAMETERS")
         base_kind.set_parameters("REAL_ACTION_PARAMETERS")
+        base_kind.set_parameters("BOUNDED_INT_ACTION_PARAMETERS")
+        base_kind.set_parameters("UNBOUNDED_INT_ACTION_PARAMETERS")
         base_kind.set_fluents_type("NUMERIC_FLUENTS")
         base_kind.set_fluents_type("INT_FLUENTS")
         base_kind.set_fluents_type("REAL_FLUENTS")
@@ -173,7 +187,9 @@ class TempestEngine(_BaseEngine, up.engines.mixins.AnytimePlannerMixin):
         is_in_timeout: bool = False
         plan_found = False
 
-        with pysmt_env.factory.Solver(name=self.solver_name, logic="QF_LRA") as smt:
+        with pysmt_env.factory.Solver(
+            name=self.solver_name, logic=_logic(problem)
+        ) as smt:
             step_zero = encoder.encode_step_zero()
             if step_zero is not None:
                 smt.add_assertion(step_zero)
@@ -208,7 +224,9 @@ class TempestEngine(_BaseEngine, up.engines.mixins.AnytimePlannerMixin):
                                     terms.append(
                                         encoder.mgr.EqualsOrIff(
                                             encoder.symenc.parameter(a, p, i),
-                                            encoder.mgr.Real(pv),
+                                            encoder.mgr.Int(pv)
+                                            if p.type.is_int_type()
+                                            else encoder.mgr.Real(pv),
                                         )
                                     )
                             else:
@@ -284,6 +302,7 @@ class TempestOptimal(_BaseEngine):
         # This kind is removed due to the grounding of expressions checked to be True in the
         # last concrete step
         supported_kind.unset_parameters("REAL_ACTION_PARAMETERS")
+        supported_kind.unset_parameters("UNBOUNDED_INT_ACTION_PARAMETERS")
         return supported_kind
 
     @staticmethod
@@ -338,7 +357,9 @@ class TempestOptimal(_BaseEngine):
 
             h = 2
             first_sat_step = 0
-            with pysmt_env.factory.Solver(name=self.solver_name, logic="QF_LRA") as smt:
+            with pysmt_env.factory.Solver(
+                name=self.solver_name, logic=_logic(problem)
+            ) as smt:
                 step_zero = encoder.encode_step_zero()
                 if step_zero is not None:
                     smt.add_assertion(step_zero)
@@ -402,7 +423,9 @@ class TempestOptimal(_BaseEngine):
             )
 
         h = 2
-        with pysmt_env.factory.Optimizer(name=self.solver_name, logic="QF_LRA") as omt:
+        with pysmt_env.factory.Optimizer(
+            name=self.solver_name, logic=_logic(problem)
+        ) as omt:
             step_zero = encoder.encode_step_zero()
             if step_zero is not None:
                 omt.add_assertion(step_zero)

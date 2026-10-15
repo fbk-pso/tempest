@@ -128,7 +128,9 @@ class SMTConverter(walkers.dag.DagWalker):
         self, expression: FNode, args: list[SMTFNode], **kwargs: Any
     ) -> SMTFNode:
         assert self.scope is not None and self.w is not None
-        return self.symenc.parameter(self.scope, expression.parameter(), self.w)
+        res = self.symenc.parameter(self.scope, expression.parameter(), self.w)
+        # Int parameters are INT symbols; the rest of the encoding is real arithmetic.
+        return self.manager.ToReal(res) if res.symbol_type().is_int_type() else res
 
     def walk_object_exp(
         self, expression: FNode, args: list[SMTFNode], **kwargs: Any
