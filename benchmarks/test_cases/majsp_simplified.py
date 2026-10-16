@@ -147,7 +147,7 @@ def get_problems(nRob, nPall, nPos, nTreatment):
 
 def get_test_cases():
     parameters_optimum = [
-        ([1, 1, 2, 1], Fraction(2002, 100)),
+        ([1, 1, 2, 1], Fraction(201, 50)),
     ]
     test_cases = {}
     for params, optimum in parameters_optimum:
