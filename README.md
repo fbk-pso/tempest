@@ -64,6 +64,8 @@ TemPEST has different parameters to configure its behavior. Some parameters are 
 
 - **`solver_name`** (`str`):
   The name of the SMT or OMT solver used by PySMT (e.g., `"z3"` or `"optimathsat"`).
+  Nonlinear problems require a solver that supports QF_NRA/QF_NIRA. For optimal
+  engines use `"z3_incr"`, `"z3_sua"` or `"optimsat"`, not `"z3"`.
 
 ### Specific to Optimal Engines
 

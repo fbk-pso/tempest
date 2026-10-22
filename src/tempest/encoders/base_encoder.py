@@ -70,6 +70,10 @@ Event = tuple[Action | None, Timing, frozenset[FNode], frozenset[Effect]]
 Toucher = tuple[Action | None, Timing | None, Effect]
 
 
+class _IrrationalModel(Exception):
+    """The model assigns an algebraic (irrational) value, which a UP plan cannot hold."""
+
+
 class BaseEncoder(ABC):
     def __init__(
         self,
@@ -567,19 +571,25 @@ class BaseEncoder(ABC):
     def extract_plan(
         self, model: pysmt.solvers.solver.Model, h: int
     ) -> SequentialPlan | TimeTriggeredPlan:
+        def value(sym: SMTFNode) -> Any:
+            v = model.get_value(sym)
+            if v.is_algebraic_constant():
+                raise _IrrationalModel(f"{sym} = {v}")
+            return v.constant_value()
+
         res = []
         for i in range(1, h):
-            t = model.get_py_value(self.t(i))
+            t = value(self.t(i))
             for a in self.actions:
                 if model.get_py_value(self.a(a, i)):
                     d = (
-                        model.get_py_value(self.dur(a, i))
+                        value(self.dur(a, i))
                         if isinstance(a, up.model.DurativeAction)
                         else None
                     )
                     params = []
                     for p in a.parameters:
-                        pv = model.get_py_value(self.symenc.parameter(a, p, i))
+                        pv = value(self.symenc.parameter(a, p, i))
                         if p.type.is_user_type():
                             assert pv.denominator == 1
                             pv = self.map_back_objects[pv.numerator]
