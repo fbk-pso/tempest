@@ -27,7 +27,7 @@ classifiers = [
 dev = [
     "pytest==9.1.1",
     "mypy==2.4.1",
-    "ruff==0.17.2",
+    "ruff==0.17.3",
     "pre-commit==4.6.2",
     "unified-planning @ git+https://github.com/aiplan4eu/unified-planning.git",
 ]
