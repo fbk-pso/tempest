@@ -80,12 +80,11 @@ def _is_nonlinear(problem: "up.model.Problem") -> bool:
     static = problem.get_static_fluents()
 
     def varying(e: FNode) -> bool:
-        # Static fluents encode to constants (or an ite over constants), never variables.
-        if e.is_fluent_exp():
-            return e.fluent() not in static
+        # A static fluent is constant only if its arguments are; speed(r) encodes to ite(r = ..., ...).
+        if e.is_fluent_exp() and e.fluent() not in static:
+            return True
         if e.is_parameter_exp():
-            t = e.parameter().type
-            return t.is_int_type() or t.is_real_type()
+            return True
         return any(varying(a) for a in e.args)
 
     # ponytail: tree walk without memoization, fine for planning-sized expressions

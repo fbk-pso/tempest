@@ -32,12 +32,14 @@ from unified_planning.shortcuts import (
     Equals,
     InstantaneousAction,
     IntType,
+    Object,
     OneshotPlanner,
     PlanValidator,
     Problem,
     RealType,
     StartTiming,
     Times,
+    UserType,
 )
 
 from tempest.engine import _logic
@@ -86,6 +88,22 @@ def test_logic_from_nonlinearity() -> None:
     problem.add_goal(GE(x, 4))
     assert problem.kind.has_general_numeric_planning()
     assert _logic(problem) == QF_LRA
+
+    # Static speed(r) encodes to ite(r = ..., ...) over the parameter, so x * speed(r) is nonlinear.
+    robot = UserType("Robot")
+    speed = Fluent("speed", RealType(), r=robot)
+    problem = Problem("static_with_param")
+    problem.add_fluent(x, default_initial_value=1)
+    problem.add_fluent(speed, default_initial_value=1)
+    r1 = Object("r1", robot)
+    problem.add_objects([r1, Object("r2", robot)])
+    problem.set_initial_value(speed(r1), 3)
+    a = InstantaneousAction("scale", r=robot)
+    a.add_effect(x, Times(x, speed(a.r)))
+    problem.add_action(a)
+    problem.add_goal(GE(x, 9))
+    assert speed in problem.get_static_fluents()
+    assert _logic(problem) == QF_NRA
 
 
 @pytest.mark.parametrize("nonlinear_goal", [False, True])
