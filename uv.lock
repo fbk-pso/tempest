@@ -716,14 +716,14 @@ wheels = [
 
 [[package]]
 name = "pysmt"
-version = "0.9.7.dev489"
+version = "0.9.7.dev492"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "setuptools" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/74/4f/687cd9a64a5f8fbef1af049db9529482e77e2b76f49159b3fb3e575110b1/pysmt-0.9.7.dev489.tar.gz", hash = "sha256:999ca54049f701718a313adbf8462afbdabce6e5277f68aac92c2869dc2341e5", size = 320294, upload-time = "2026-10-06T16:43:40.505Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b9/bf/67eeaf4914f9378c71b2de050a85a7ebe346792b3b9016418d0092d52158/pysmt-0.9.7.dev492.tar.gz", hash = "sha256:6e39acae3f6f420d5b4501113b967f44065eaf0a6943d3109fe0b047acf15f1a", size = 320458, upload-time = "2026-11-19T12:44:14.207Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a0/f5/fabdaa3f9e62e81c30633c12ab180be13884820603e080df0aa5b965bd0d/pysmt-0.9.7.dev489-py2.py3-none-any.whl", hash = "sha256:8610b57a5d1e964518d557eb222b946269cd1e6e3ce87a9c966a849015fe8706", size = 395110, upload-time = "2026-10-06T16:43:39.2Z" },
+    { url = "https://files.pythonhosted.org/packages/b0/6a/44f182a993ea2b066b628c58c1be03314f419afc70ae9a9b08e2e42e14da/pysmt-0.9.7.dev492-py2.py3-none-any.whl", hash = "sha256:8cf8fea840d2c0ebc91d695568722635f86bb67fa72247b89bb1416aff8263f9", size = 395286, upload-time = "2026-11-19T12:44:12.879Z" },
 ]
 
 [[package]]
